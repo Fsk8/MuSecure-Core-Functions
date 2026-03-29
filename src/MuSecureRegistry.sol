@@ -109,7 +109,7 @@ contract MuSecureRegistry is IMuSecureRegistry, Ownable, ReentrancyGuard, Pausab
         require(fingerprintHash != bytes32(0), "MuSecure: empty fingerprint");
         require(bytes(ipfsCid).length > 0,     "MuSecure: empty CID");
         require(authenticityScore <= 100,       "MuSecure: score out of range");
-        require(!_works[fingerprintHash].timestamp > 0, "MuSecure: already registered");
+        require(_works[fingerprintHash].timestamp == 0, "MuSecure: already registered");
         require(msg.value >= registrationFee,   "MuSecure: insufficient fee");
 
         // ── Verificar firma del score (si hay signer configurado) ──────────
@@ -122,7 +122,7 @@ contract MuSecureRegistry is IMuSecureRegistry, Ownable, ReentrancyGuard, Pausab
 
         if (risk == RiskLevel.Blocked) {
             emit WorkBlocked(msg.sender, fingerprintHash, authenticityScore, block.timestamp);
-            revert("MuSecure: work blocked — too similar to existing catalog");
+            revert("MuSecure: work blocked - too similar to existing catalog");
         }
 
         // ── Mintear NFT certificado ────────────────────────────────────────

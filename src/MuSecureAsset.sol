@@ -107,8 +107,8 @@ contract MuSecureAsset is IMuSecureAsset, ERC721URIStorage, Ownable, Pausable {
 
         // Mint siempre permitido
         if (from != address(0) && _soulbound[tokenId]) {
-            // Burn también bloqueado para soulbound — la obra existe para siempre
-            revert("MuSecureAsset: soulbound token — non-transferable");
+            // Burn también bloqueado para soulbound - la obra existe para siempre
+            revert("MuSecureAsset: soulbound token - non-transferable");
         }
 
         return super._update(to, tokenId, auth);
