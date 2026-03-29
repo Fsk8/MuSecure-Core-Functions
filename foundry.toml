@@ -1,0 +1,29 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc = "0.8.24"
+optimizer = true
+optimizer_runs = 200
+via_ir = true                  # mejor optimización para Arbitrum
+ffi = false
+
+# Remappings para OpenZeppelin v5
+remappings = [
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+]
+
+# Gas reporting en tests
+gas_reports = ["MuSecureRegistry", "MuSecureAsset"]
+
+[profile.ci]
+fuzz = { runs = 1000 }
+
+[rpc_endpoints]
+arbitrum_sepolia = "${ARBITRUM_SEPOLIA_RPC}"
+arbitrum_one     = "${ARBITRUM_ONE_RPC}"
+localhost        = "http://127.0.0.1:8545"
+
+[etherscan]
+arbitrum_sepolia = { key = "${ARBISCAN_API_KEY}", url = "https://api-sepolia.arbiscan.io/api" }
+arbitrum_one     = { key = "${ARBISCAN_API_KEY}", url = "https://api.arbiscan.io/api" }
