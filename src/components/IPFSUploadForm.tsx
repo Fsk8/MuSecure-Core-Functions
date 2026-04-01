@@ -1,40 +1,35 @@
-/**
- * MuSecure – components/IPFSUploadForm.tsx
- *
- * En App.tsx:
- *   import { useAccount, useSignMessage } from "wagmi"
- *   const { address } = useAccount()
- *   const { signMessageAsync } = useSignMessage()
- *
- *   {fpResult && address && (
- *     <IPFSUploadForm
- *       fingerprint={fpResult}
- *       audioFile={file}
- *       ownerAddress={address}
- *       signMessage={signMessageAsync}
- *     />
- *   )}
- */
-
 import { useState } from "react";
 import { useIPFSUpload } from "@/hooks/useIPFSUpload";
 import type { FingerprintResult } from "@/services/AudioFingerprintService";
 import { LighthouseService } from "@/services/LighthouseService";
+import { RegisterWorkButton } from "@/components/RegisterWorkButton.tsx";
 
 interface Props {
   fingerprint: FingerprintResult;
   ownerAddress: string;
   audioFile: File;
   signMessage: (message: string) => Promise<string>;
+  /** Score AcoustID 0-100 — viene de CatalogAuthenticityReport.catalogMatchScore */
+  authenticityScore: number;
+  /** Si ya se sabe el nivel de riesgo del catálogo */
+  soulbound?: boolean;
 }
 
-export function IPFSUploadForm({ fingerprint, ownerAddress, audioFile, signMessage }: Props) {
+export function IPFSUploadForm({
+  fingerprint,
+  ownerAddress,
+  audioFile,
+  signMessage,
+  authenticityScore,
+  soulbound = false,
+}: Props) {
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
   const [description, setDescription] = useState("");
   const [artworkFile, setArtworkFile] = useState<File | null>(null);
   const [artworkPreview, setArtworkPreview] = useState<string | null>(null);
   const [encrypt, setEncrypt] = useState(true);
+  const [isSoulbound, setIsSoulbound] = useState(soulbound);
 
   const { upload, progress, result, error, reset } = useIPFSUpload();
 
@@ -68,12 +63,13 @@ export function IPFSUploadForm({ fingerprint, ownerAddress, audioFile, signMessa
     });
   };
 
+  // ── Post-upload: mostrar resultado + botón de registro on-chain ────────────
   if (result) {
     return (
       <div className="upload-result">
         <h3>Obra subida a IPFS</h3>
         <dl>
-          <dt>Metadata CID (registrar on-chain)</dt>
+          <dt>Metadata CID</dt>
           <dd><code className="mono">{result.metadataCid}</code></dd>
           <dt>URL metadata</dt>
           <dd>
@@ -87,34 +83,39 @@ export function IPFSUploadForm({ fingerprint, ownerAddress, audioFile, signMessa
             <>
               <dt>Artwork</dt>
               <dd>
-                <a href={LighthouseService.gatewayUrl(result.artworkCid)} target="_blank" rel="noreferrer">
+                <a
+                  href={LighthouseService.gatewayUrl(result.artworkCid)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   Ver artwork →
                 </a>
               </dd>
             </>
           )}
-          <dt>SHA-256 (para el contrato)</dt>
+          <dt>SHA-256</dt>
           <dd><code className="mono small">0x{result.metadata.fingerprint.sha256}</code></dd>
         </dl>
 
-        <button
-          type="button"
-          onClick={() =>
-            console.log("→ on-chain:", {
-              metadataCid: result.metadataCid,
-              sha256: `0x${result.metadata.fingerprint.sha256}`,
-            })
-          }
-        >
-          Registrar en Arbitrum →
-        </button>
-        <button type="button" className="secondary" onClick={reset}>
+        {/* ── Registro on-chain ── */}
+        <RegisterWorkButton
+          fingerprintHash={`0x${result.metadata.fingerprint.sha256}`}
+          ipfsCid={result.metadataCid}
+          authenticityScore={authenticityScore}
+          soulbound={isSoulbound}
+          onSuccess={(txHash, tokenId) => {
+            console.log("✅ Registrado on-chain:", { txHash, tokenId });
+          }}
+        />
+
+        <button type="button" className="secondary" onClick={reset} style={{ marginTop: 8 }}>
           Subir otra obra
         </button>
       </div>
     );
   }
 
+  // ── Formulario de upload ───────────────────────────────────────────────────
   return (
     <div className="ipfs-upload-form">
       <h3>Detalles de la obra</h3>
@@ -158,10 +159,14 @@ export function IPFSUploadForm({ fingerprint, ownerAddress, audioFile, signMessa
       </label>
 
       {artworkPreview && (
-        <img src={artworkPreview} alt="Preview" style={{ maxWidth: 120, borderRadius: 8, marginTop: 8 }} />
+        <img
+          src={artworkPreview}
+          alt="Preview"
+          style={{ maxWidth: 120, borderRadius: 8, marginTop: 8 }}
+        />
       )}
 
-      {/* ── Encryption toggle ─────────────────────────────────────────── */}
+      {/* ── Encryption toggle ─────────────────────────────────────────────── */}
       <div className="encrypt-toggle" style={{ marginTop: 16 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
           <div
@@ -169,29 +174,18 @@ export function IPFSUploadForm({ fingerprint, ownerAddress, audioFile, signMessa
             aria-checked={encrypt}
             onClick={() => !isUploading && setEncrypt((v) => !v)}
             style={{
-              width: 44,
-              height: 24,
-              borderRadius: 12,
+              width: 44, height: 24, borderRadius: 12,
               background: encrypt ? "var(--color-text-info, #2563eb)" : "var(--color-border-secondary)",
-              position: "relative",
-              transition: "background 0.2s",
-              cursor: isUploading ? "not-allowed" : "pointer",
-              flexShrink: 0,
+              position: "relative", transition: "background 0.2s",
+              cursor: isUploading ? "not-allowed" : "pointer", flexShrink: 0,
             }}
           >
-            <span
-              style={{
-                position: "absolute",
-                top: 3,
-                left: encrypt ? 23 : 3,
-                width: 18,
-                height: 18,
-                borderRadius: "50%",
-                background: "#fff",
-                transition: "left 0.2s",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-              }}
-            />
+            <span style={{
+              position: "absolute", top: 3, left: encrypt ? 23 : 3,
+              width: 18, height: 18, borderRadius: "50%",
+              background: "#fff", transition: "left 0.2s",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+            }} />
           </div>
           <div>
             <span style={{ fontWeight: 500, fontSize: 14 }}>
@@ -201,6 +195,40 @@ export function IPFSUploadForm({ fingerprint, ownerAddress, audioFile, signMessa
               {encrypt
                 ? "El audio se encripta con Lit Protocol. Solo tu wallet puede acceder."
                 : "El audio quedará público en IPFS. Útil para demos o releases abiertos."}
+            </p>
+          </div>
+        </label>
+      </div>
+
+      {/* ── Soulbound toggle ──────────────────────────────────────────────── */}
+      <div className="encrypt-toggle" style={{ marginTop: 12 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <div
+            role="switch"
+            aria-checked={isSoulbound}
+            onClick={() => !isUploading && setIsSoulbound((v) => !v)}
+            style={{
+              width: 44, height: 24, borderRadius: 12,
+              background: isSoulbound ? "var(--color-text-info, #2563eb)" : "var(--color-border-secondary)",
+              position: "relative", transition: "background 0.2s",
+              cursor: isUploading ? "not-allowed" : "pointer", flexShrink: 0,
+            }}
+          >
+            <span style={{
+              position: "absolute", top: 3, left: isSoulbound ? 23 : 3,
+              width: 18, height: 18, borderRadius: "50%",
+              background: "#fff", transition: "left 0.2s",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+            }} />
+          </div>
+          <div>
+            <span style={{ fontWeight: 500, fontSize: 14 }}>
+              {isSoulbound ? "🔗 Soulbound (no transferible)" : "↔️ Transferible"}
+            </span>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--color-text-secondary)" }}>
+              {isSoulbound
+                ? "El NFT queda vinculado permanentemente a tu wallet."
+                : "El NFT puede transferirse o venderse como licencia."}
             </p>
           </div>
         </label>

@@ -13,8 +13,7 @@ const SECURITY_HEADERS = {
     "default-src 'self'",
     "script-src 'self' 'unsafe-eval' 'unsafe-inline' 'wasm-unsafe-eval' blob:",
     "script-src-elem 'self' 'unsafe-inline' blob:",
-    // El gateway va por /ipfs-proxy/* — mismo origen, no necesita estar aquí
-    "connect-src 'self' https://api.acoustid.org https://unpkg.com https://encryption.lighthouse.storage https://lighthouse.storage https://*.lighthouse.storage blob:",
+    "connect-src 'self' http://localhost:3001 https://api.acoustid.org https://unpkg.com https://encryption.lighthouse.storage https://lighthouse.storage https://*.lighthouse.storage blob:",
     "worker-src 'self' blob:",
     "img-src 'self' data: blob:",
     "media-src 'self' blob:",
@@ -35,14 +34,11 @@ export default defineConfig({
     headers: SECURITY_HEADERS,
 
     proxy: {
-      // Todas las peticiones a /ipfs-proxy/... se reenvían al gateway de Lighthouse
-      // Como salen del mismo origen (localhost), COEP no las bloquea.
       "/ipfs-proxy": {
         target: "https://gateway.lighthouse.storage",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/ipfs-proxy/, ""),
         configure: (proxy) => {
-          // Inyectamos CORP en la respuesta para que COEP no bloquee
           proxy.on("proxyRes", (proxyRes) => {
             proxyRes.headers["cross-origin-resource-policy"] = "cross-origin";
           });
