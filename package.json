@@ -16,7 +16,6 @@
     "@lighthouse-web3/sdk": "^0.4.5",
     "@lit-protocol/auth-helpers": "^8.2.1",
     "@lit-protocol/constants": "^9.0.1",
-    "@lit-protocol/lit-node-client": "^7.4.0",
     "@lit-protocol/types": "^8.0.4",
     "@ucanto/principal": "^9.0.3",
     "@unimusic/chromaprint": "^0.1.4",

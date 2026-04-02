@@ -1,13 +1,13 @@
 /**
  * MuSecure – services/LighthouseService.ts
- * Instalar: npm install @lighthouse-web3/sdk
+ * Implementación optimizada para despliegue en Vercel y uso compartido.
  */
 
 import lighthouse from "@lighthouse-web3/sdk";
 
 function getApiKey(): string {
   const key = import.meta.env.VITE_LIGHTHOUSE_API_KEY as string;
-  if (!key) throw new Error("Falta VITE_LIGHTHOUSE_API_KEY en .env");
+  if (!key) throw new Error("Falta VITE_LIGHTHOUSE_API_KEY en las variables de entorno");
   return key;
 }
 
@@ -17,7 +17,7 @@ export interface UploadResult {
   encrypted: boolean;
 }
 
-/** Registro que se persiste en localStorage por wallet */
+/** Registro que se persiste en localStorage por sesión/wallet */
 export interface LocalUploadRecord {
   metadataCid: string;
   audioCid: string;
@@ -42,7 +42,7 @@ export class LighthouseService {
     return LighthouseService.instance;
   }
 
-  // ── Upload ────────────────────────────────────────────────────────────────
+  // ── Upload (Audio & General) ──────────────────────────────────────────────
 
   async uploadAudio(
     file: File,
@@ -55,33 +55,31 @@ export class LighthouseService {
 
     if (encrypt) {
       if (typeof signMessage !== "function") {
-        throw new Error("signMessage requerido para encriptar");
+        throw new Error("Se requiere firmar el mensaje para encriptar la obra.");
       }
 
       const authMessage = await lighthouse.getAuthMessage(ownerAddress);
       const message = authMessage?.data?.message;
-      if (typeof message !== "string" || !message.trim()) {
-        throw new Error(
-          "Lighthouse no devolvió mensaje de autenticación (revisa CSP y conexión a encryption.lighthouse.storage)"
-        );
+      
+      if (!message) {
+        throw new Error("No se pudo obtener el mensaje de autenticación de Lighthouse.");
       }
+      
       const signature = await signMessage(message);
 
-      let response: { data: unknown };
+      let response: any;
       try {
-        response = (await lighthouse.uploadEncrypted(
+        response = await lighthouse.uploadEncrypted(
           [file],
           apiKey,
           ownerAddress,
           signature
-        )) as { data: unknown };
-      } catch (e) {
-        throw new Error(
-          `Lighthouse uploadEncrypted falló: ${(e as Error)?.message ?? String(e)}`
         );
+      } catch (e) {
+        throw new Error(`Error en carga encriptada: ${(e as Error)?.message}`);
       }
 
-      const cid = LighthouseService.extractCid(response.data ?? response);
+      const cid = LighthouseService.extractCid(response.data || response);
       return { cid, url: LighthouseService.gatewayUrl(cid), encrypted: true };
     } else {
       return this.uploadPublic(file, file.name, onProgress);
@@ -94,12 +92,11 @@ export class LighthouseService {
     onProgress?: (pct: number) => void
   ): Promise<UploadResult> {
     const apiKey = getApiKey();
-    const blob =
-      file instanceof File ? file : new File([file], fileName, { type: file.type });
+    const blob = file instanceof File ? file : new File([file], fileName, { type: file.type });
 
-    let response: { data: unknown };
+    let response: any;
     try {
-      response = (await lighthouse.upload(
+      response = await lighthouse.upload(
         [blob],
         apiKey,
         {
@@ -108,14 +105,12 @@ export class LighthouseService {
             ? (data: { progress: number }) => onProgress(data.progress)
             : undefined,
         }
-      )) as { data: unknown };
-    } catch (e) {
-      throw new Error(
-        `Lighthouse upload falló: ${(e as Error)?.message ?? String(e)}`
       );
+    } catch (e) {
+      throw new Error(`Error en carga pública: ${(e as Error)?.message}`);
     }
 
-    const cid = LighthouseService.extractCid(response.data ?? response);
+    const cid = LighthouseService.extractCid(response.data || response);
     return { cid, url: LighthouseService.gatewayUrl(cid), encrypted: false };
   }
 
@@ -124,17 +119,16 @@ export class LighthouseService {
     return this.uploadPublic(blob, fileName);
   }
 
-  // ── Registro local por wallet ─────────────────────────────────────────────
+  // ── Gestión de Registros (Local & Global) ────────────────────────────────
 
   saveUploadRecord(record: LocalUploadRecord): void {
     const all = this.getAllRecords();
-    // Evitar duplicados por metadataCid
     const deduped = all.filter((r) => r.metadataCid !== record.metadataCid);
     deduped.unshift(record);
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(deduped));
     } catch {
-      console.warn("localStorage lleno — registro no guardado");
+      console.warn("LocalStorage lleno, el registro no se guardó localmente.");
     }
   }
 
@@ -153,52 +147,44 @@ export class LighthouseService {
     }
   }
 
-  // ── Lighthouse getUploads (lista de la API key, no por wallet) ────────────
-  // Útil para debug — no filtrar por wallet aquí porque publicKey
-  // corresponde a la API key, no al usuario conectado.
-
-  async listUploads(lastKey: string | null = null): Promise<
-    Array<{
-      publicKey: string;
-      fileName: string;
-      mimeType: string;
-      txHash: string;
-      status: string;
-      createdAt: number;
-      fileSizeInBytes: string;
-      cid: string;
-      id: string;
-      lastUpdate: number;
-      encryption: boolean;
-    }>
-  > {
-    const apiKey = getApiKey();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const res = await lighthouse.getUploads(apiKey, lastKey as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const list = (res as any)?.data?.fileList;
-    if (!Array.isArray(list)) return [];
-    return list;
+  /** * Retorna la lista global de archivos vinculados a la API Key.
+   * Ideal para el componente "Explorer".
+   */
+  async listUploads(lastKey: string | null = null): Promise<any[]> {
+    try {
+      const apiKey = getApiKey();
+      const res = await lighthouse.getUploads(apiKey, lastKey as any);
+      return (res as any)?.data?.fileList || [];
+    } catch (error) {
+      console.error("Error al listar archivos de la API Key:", error);
+      return [];
+    }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Helpers de Infraestructura ───────────────────────────────────────────
 
+  /** Genera la URL para acceder al archivo vía IPFS Gateway */
   static gatewayUrl(cid: string): string {
-    // En dev usamos el proxy de Vite (/ipfs-proxy) para evitar el bloqueo COEP.
-    // En producción necesitarás un proxy equivalente en tu CDN/servidor.
+    // Detectamos si estamos en desarrollo para usar el proxy de Vite
     const isDev = import.meta.env.DEV;
-    if (isDev) return `/ipfs-proxy/ipfs/${cid}`;
+    if (isDev) {
+      return `/ipfs-proxy/ipfs/${cid}`;
+    }
+    // En producción (Vercel) usamos el gateway oficial
     return `https://gateway.lighthouse.storage/ipfs/${cid}`;
   }
 
+  /** Extrae el CID de manera robusta según la respuesta de la API */
   private static extractCid(data: unknown): string {
     const tryExtract = (v: unknown): string | null => {
       if (!v) return null;
       if (Array.isArray(v)) return tryExtract(v[0]);
       if (typeof v === "object") {
-        const obj = v as Record<string, unknown>;
-        if (typeof obj.Hash === "string" && obj.Hash) return obj.Hash;
-        if (obj.data !== undefined) return tryExtract(obj.data);
+        const obj = v as any;
+        // Buscamos 'Hash' (común en Lighthouse) o 'cid'
+        if (obj.Hash) return obj.Hash;
+        if (obj.cid) return obj.cid;
+        if (obj.data) return tryExtract(obj.data);
       }
       return null;
     };
@@ -206,17 +192,6 @@ export class LighthouseService {
     const cid = tryExtract(data);
     if (cid) return cid;
 
-    let preview: string;
-    try {
-      const s = JSON.stringify(data);
-      preview = typeof s === "string" ? s : String(data);
-    } catch {
-      preview = String(data);
-    }
-    if (preview.length > 800) preview = preview.slice(0, 800) + "…";
-
-    throw new Error(
-      `Lighthouse no devolvió CID. Puede ser API key inválida o sin cuota (403). Respuesta: ${preview}`
-    );
+    throw new Error("Lighthouse no devolvió un CID válido en la respuesta.");
   }
 }
