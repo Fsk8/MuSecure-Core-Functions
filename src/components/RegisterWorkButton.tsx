@@ -85,7 +85,7 @@ export function RegisterWorkButton({
 
       {authenticityScore >= 95 && (
         <p style={{ color: "#f44336", fontSize: "0.8rem" }}>
-          ⚠️ Score muy alto. El contrato podría rechazar este registro.
+          ⚠️ Esta obra es muy similar a una obra conocida. No se puede registrar.
         </p>
       )}
 

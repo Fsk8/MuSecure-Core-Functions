@@ -53,20 +53,16 @@ export function useRegisterWork() {
   }): Promise<RegisterResult> => {
     try {
       const registryAddress = import.meta.env.VITE_REGISTRY_ADDRESS;
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://tu-backend.vercel.app"; // Asegúrate de usar HTTPS en Vercel
 
       if (!window.ethereum) throw new Error("MetaMask no detectado");
 
-      // Inicializar Provider
       const provider = new ethers.BrowserProvider(window.ethereum as any);
       const network = await provider.getNetwork();
-      
       const currentChainId = network.chainId.toString();
-      console.log("🌐 Red detectada por el código:", currentChainId);
 
-      // Validación de Red (Arbitrum Sepolia = 421614)
       if (currentChainId !== "421614") {
-        throw new Error(`Estás en la red ${currentChainId}. Cambia a Arbitrum Sepolia (421614) en MetaMask.`);
+        throw new Error(`Cambia a Arbitrum Sepolia (421614) en MetaMask.`);
       }
 
       const signer = await provider.getSigner();
@@ -96,15 +92,31 @@ export function useRegisterWork() {
       const sigData = await sigRes.json();
       if (!sigData.success) throw new Error(sigData.error || "Falla en firma del backend");
 
-      // 3. Transacción
+      // --- CORRECCIÓN DE GAS EMPIEZA AQUÍ ---
       set("waiting-wallet");
+      
+      // Obtenemos los fees actuales de la red
+      const feeData = await provider.getFeeData();
+      
+      // Multiplicamos por 1.3 (30% de margen) para que el bloque no nos rechace
+      // Usamos BigInt para evitar errores de precisión con ethers v6
+      const maxFeePerGas = (feeData.maxFeePerGas! * 130n) / 100n;
+      const maxPriorityFeePerGas = (feeData.maxPriorityFeePerGas! * 130n) / 100n;
+
       const tx = await registry.registerWork(
         cleanHash,
         input.ipfsCid,
         BigInt(input.authenticityScore),
         input.soulbound,
-        sigData.signature
+        sigData.signature,
+        {
+          maxFeePerGas,
+          maxPriorityFeePerGas,
+          // Un gas limit manual alto previene fallos de estimación en L2
+          gasLimit: 600000 
+        }
       );
+      // --- CORRECCIÓN DE GAS TERMINA AQUÍ ---
 
       // 4. Confirmación
       set("confirming", { txHash: tx.hash });
@@ -125,7 +137,8 @@ export function useRegisterWork() {
 
     } catch (err: any) {
       console.error("🔴 Error MuSecure:", err);
-      const msg = err.reason || err.message || "Error desconocido";
+      // Intentamos capturar el mensaje de error de la transacción si existe
+      const msg = err.error?.message || err.reason || err.message || "Error desconocido";
       set("error", { error: msg });
       throw err;
     }

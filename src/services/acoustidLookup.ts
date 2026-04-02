@@ -7,33 +7,46 @@ export async function lookupAcoustId(params: {
   fingerprint: string;
   durationSec: number;
 }): Promise<AcoustIdLookupJson> {
+
+  if (!params.client || params.client === "undefined") {
+    throw new Error("AcoustID Client Key no configurada (VITE_ACOUSTID_CLIENT_KEY)");
+  }
+
+  console.log("[AcoustID] Enviando lookup:", {
+    fingerprintLen: params.fingerprint.length,
+    fingerprintHead: params.fingerprint.slice(0, 20),
+    duration: params.durationSec,
+  });
+
   const body = new URLSearchParams({
     format: "json",
     client: params.client.trim(),
     duration: String(Math.round(params.durationSec)),
     fingerprint: params.fingerprint,
-    // SIN "compress": ese flag devuelve recordings en formato comprimido
-    // que no es compatible con el parser actual.
     meta: "recordings releases releasegroups",
-  });
-
-  console.log("[AcoustID] lookup →", {
-    duration: params.durationSec,
-    fingerprintLen: params.fingerprint.length,
-    fingerprintHead: params.fingerprint.slice(0, 40),
   });
 
   const res = await fetch(LOOKUP_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-    },
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
     body,
   });
 
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error("AcoustID HTTP " + res.status + ": " + txt);
+  }
+
   const json = (await res.json()) as AcoustIdLookupJson;
 
-  console.log("[AcoustID] raw response:", JSON.stringify(json, null, 2));
+  const results = (json as any).results ?? [];
+  console.log("[AcoustID] Respuesta:", {
+    status: json.status,
+    resultsCount: results.length,
+    firstScore: results[0]?.score,
+    firstRecordingsCount: results[0]?.recordings?.length ?? 0,
+    firstRecordingTitle: results[0]?.recordings?.[0]?.title,
+  });
 
   return json;
 }

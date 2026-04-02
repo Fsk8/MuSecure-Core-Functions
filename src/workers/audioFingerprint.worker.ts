@@ -1,14 +1,6 @@
 /**
  * MuSecure - Audio Fingerprint Web Worker
- *
- * Headers en el host (Vite dev/preview o CDN):
- *   Cross-Origin-Opener-Policy: same-origin
- *   Cross-Origin-Embedder-Policy: require-corp
- * Necesarios si usas núcleo ffmpeg multi-hilo; el núcleo @ffmpeg/core 0.12.x
- * single-thread suele funcionar, pero mantener COOP/COEP evita sorpresas.
- *
- * La huella generada es un algoritmo propio (croma + sub-fingerprints), no
- * binariamente compatible con fpcalc/AcoustID.
+ * Optimizado para despliegue en Vercel con FFmpeg WASM.
  */
 
 import { FFmpeg } from "@ffmpeg/ffmpeg";
@@ -32,6 +24,7 @@ export type WorkerOutMessage =
     }
   | { type: "ERROR"; payload: { message: string } };
 
+// Mantenemos 11025 Hz: Es el estándar de Chromaprint para que MusicBrainz lo reconozca.
 const SAMPLE_RATE = 11025;
 const FRAME_SIZE = 4096;
 const OVERLAP = 0.75;
@@ -169,6 +162,7 @@ async function decodeAudioToPCM(
 
   ffmpeg.on("progress", ({ progress }) => onProgress(progress * 100));
 
+  // CORRECCIÓN: Forzamos el resampleo de alta calidad para evitar que el hash varíe en Vercel.
   await ffmpeg.exec([
     "-i",
     inputName,

@@ -1,7 +1,3 @@
-/**
- * MuSecure – vite.config.ts
- */
-
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
@@ -28,12 +24,14 @@ export default defineConfig({
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
+    dedupe: ["react", "react-dom"],
   },
 
   server: {
     headers: SECURITY_HEADERS,
 
     proxy: {
+      // Proxy para evitar bloqueo COEP con Lighthouse gateway
       "/ipfs-proxy": {
         target: "https://gateway.lighthouse.storage",
         changeOrigin: true,
@@ -54,6 +52,7 @@ export default defineConfig({
   assetsInclude: ["**/*.wasm"],
 
   optimizeDeps: {
+    // CRÍTICO: estos tres no deben pre-bundlearse — usan WASM con URLs relativas
     exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util", "@unimusic/chromaprint"],
     esbuildOptions: {
       target: "es2022",
