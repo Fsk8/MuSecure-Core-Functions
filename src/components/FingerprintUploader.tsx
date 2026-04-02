@@ -1,42 +1,18 @@
 import { useCallback, useState } from "react";
-import {
-  AudioFingerprintService,
-  type FingerprintResult,
-} from "@/services/AudioFingerprintService";
+import { AudioFingerprintService, type FingerprintResult } from "@/services/AudioFingerprintService";
 import { runCatalogAuthenticityCheck } from "@/services/runCatalogCheck";
 import { getAcoustIdClientKey } from "@/env";
-import type { CatalogAuthenticityReport, CatalogMatchRow } from "@/types/acoustid";
+import type { CatalogAuthenticityReport } from "@/types/acoustid";
 import { IPFSUploadForm } from "@/components/IPFSUploadForm";
 import { useWallet } from "@/hooks/useWallet";
 
-interface ProgressState {
-  stage: string;
-  percent: number;
-}
-
-function mbRecordingUrl(id: string): string {
-  return `https://musicbrainz.org/recording/${id}`;
-}
-
-function acoustIdTrackUrl(id: string): string {
-  return `https://acoustid.org/track/${id}`;
-}
-
-function matchHeadline(m: CatalogMatchRow): string {
-  if (m.title && m.artist) return `${m.title} — ${m.artist}`;
-  if (m.title) return m.title;
-  if (m.artist) return m.artist;
-  return "Grabación indexada en MusicBrainz";
-}
+interface ProgressState { stage: string; percent: number; }
 
 export function FingerprintUploader() {
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<ProgressState | null>(null);
   const [result, setResult] = useState<FingerprintResult | null>(null);
-  const [catalog, setCatalog] = useState<{
-    report: CatalogAuthenticityReport;
-    durationSec: number;
-  } | null>(null);
+  const [catalog, setCatalog] = useState<{ report: CatalogAuthenticityReport; durationSec: number; } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const acoustIdKey = getAcoustIdClientKey();
@@ -44,148 +20,86 @@ export function FingerprintUploader() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFile(e.target.files?.[0] ?? null);
-    setResult(null);
-    setCatalog(null);
-    setError(null);
+    setResult(null); setCatalog(null); setError(null);
   };
 
   const handleAnalyze = useCallback(async () => {
     if (!file) return;
-    setError(null);
-    setResult(null);
-    setCatalog(null);
+    setError(null); setResult(null); setCatalog(null);
     setProgress({ stage: "Iniciando…", percent: 0 });
 
     try {
       const svc = AudioFingerprintService.getInstance();
       const custom = await svc.generateFingerprint(file, (stage, pct) => {
-        setProgress({ stage: `Huella MuSecure: ${stage}`, percent: 10 + pct * 0.45 });
+        setProgress({ stage: `Analizando: ${stage}`, percent: 10 + pct * 0.45 });
       });
       setResult(custom);
 
-      if (!acoustIdKey) {
-        setProgress({ stage: "Listo (sin AcoustID)", percent: 100 });
-        return;
-      }
-
-      try {
+      if (acoustIdKey) {
         const out = await runCatalogAuthenticityCheck(file, acoustIdKey, (s) => {
-          if (s === "chromaprint") setProgress({ stage: "Chromaprint (AcoustID)…", percent: 55 });
-          if (s === "acoustid") setProgress({ stage: "Consultando AcoustID / MusicBrainz…", percent: 80 });
+          if (s === "chromaprint") setProgress({ stage: "Generando Chromaprint…", percent: 55 });
+          if (s === "acoustid") setProgress({ stage: "Consultando Catálogos…", percent: 80 });
         });
         setCatalog({ report: out.report, durationSec: out.durationSec });
-      } catch (e) {
-        setError(`Catálogo AcoustID: ${(e as Error).message}`);
       }
-
-      setProgress({ stage: "Listo", percent: 100 });
+      setProgress({ stage: "Análisis completado", percent: 100 });
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setProgress(null);
+      setTimeout(() => setProgress(null), 1000);
     }
   }, [file, acoustIdKey]);
 
   const authenticityScore = catalog?.report.catalogMatchScore ?? 0;
 
   return (
-    <div className="card">
-      <h2>Registrar obra</h2>
-      <p className="muted">
-        1) Genera huella (MuSecure + AcoustID) → 2) Sube a IPFS → 3) Registra on-chain
-      </p>
-
-      {/* ── Wallet — siempre visible arriba ──────────────────────────────── */}
-      <section className="section">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+    <div className="max-w-4xl mx-auto space-y-6 p-6">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 shadow-2xl">
+        <header className="mb-8 flex justify-between items-start">
+          <div>
+            <h2 className="text-2xl font-bold text-white">1. Analizar Obra</h2>
+            <p className="text-zinc-500 text-sm mt-1">Genera la huella digital antes de subirla</p>
+          </div>
           {!wallet.address ? (
-            <button type="button" onClick={wallet.connect} disabled={wallet.connecting}>
-              {wallet.connecting ? "Conectando…" : "🔗 Conectar wallet"}
+            <button onClick={wallet.connect} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-sm font-bold transition-all">
+              🔗 Conectar Wallet
             </button>
           ) : (
-            <span className="pill">
-              ✓ <code className="mono">{wallet.address.slice(0, 6)}…{wallet.address.slice(-4)}</code>
-            </span>
+            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-4 py-2 rounded-xl text-xs font-mono">
+              ✓ {wallet.address.slice(0, 6)}...
+            </div>
           )}
-          {wallet.error && <p className="err" style={{ margin: 0 }}>{wallet.error}</p>}
+        </header>
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            <input type="file" accept="audio/*" onChange={handleFileChange} className="block w-full text-sm text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-zinc-800 file:text-zinc-300 hover:file:bg-zinc-700 cursor-pointer" />
+            <button onClick={handleAnalyze} disabled={!file || !!progress} className="bg-white text-black px-6 py-2 rounded-full font-bold hover:bg-zinc-200 disabled:opacity-50">
+              {progress ? `${Math.round(progress.percent)}%` : "Analizar"}
+            </button>
+          </div>
+          {progress && <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden"><div className="bg-indigo-500 h-full transition-all duration-300" style={{ width: `${progress.percent}%` }} /></div>}
+          {error && <p className="text-red-500 text-xs font-mono">{error}</p>}
         </div>
-      </section>
 
-      {/* ── Selección de archivo + botón analizar ────────────────────────── */}
-      <input type="file" accept="audio/*" onChange={handleFileChange} disabled={!!progress} />
+        {result && (
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in">
+            <div className="bg-black/20 border border-zinc-800 p-4 rounded-2xl">
+              <h4 className="text-[10px] text-zinc-500 uppercase font-bold mb-2 tracking-widest">Hash SHA-256</h4>
+              <p className="text-zinc-300 font-mono text-[10px] truncate">0x{result.sha256}</p>
+            </div>
+            <div className="bg-black/20 border border-zinc-800 p-4 rounded-2xl">
+              <h4 className="text-[10px] text-zinc-500 uppercase font-bold mb-2 tracking-widest">Probabilidad de plagio</h4>
+              <p className={`text-xl font-bold ${authenticityScore >= 90 ? 'text-red-500' : 'text-emerald-500'}`}>{authenticityScore}%</p>
+            </div>
+          </div>
+        )}
+      </div>
 
-      <button type="button" onClick={handleAnalyze} disabled={!file || !!progress}>
-        {progress ? `${progress.stage} (${Math.round(progress.percent)}%)` : "Analizar"}
-      </button>
-
-      {progress && <progress value={progress.percent} max={100} />}
-      {error && <p className="err">{error}</p>}
-
-      {/* ── Huella MuSecure ───────────────────────────────────────────────── */}
-      {result && (
-        <section className="section">
-          <h3>Huella MuSecure</h3>
-          <dl className="dl">
-            <dt>Archivo</dt><dd>{result.fileName}</dd>
-            <dt>Duración</dt><dd>{result.duration.toFixed(2)} s</dd>
-            <dt>SHA-256</dt>
-            <dd><code className="mono">0x{result.sha256}</code></dd>
-          </dl>
-        </section>
-      )}
-
-      {/* ── Coincidencias AcoustID con recordings ────────────────────────── */}
-      {catalog && !catalog.report.error && catalog.report.matches.length > 0 && (
-        <section className="section">
-          <h3>Coincidencias (AcoustID/MusicBrainz)</h3>
-          <p className="muted">{catalog.report.summary}</p>
-          <ul className="list">
-            {catalog.report.matches.slice(0, 10).map((m) => (
-              <li key={m.recordingId} className="list-row">
-                <a href={mbRecordingUrl(m.recordingId)} target="_blank" rel="noreferrer">
-                  {matchHeadline(m)}
-                </a>
-                <span className="pill">{m.scorePercent}%</span>
-                {m.releaseTitle && <span className="muted">({m.releaseTitle})</span>}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* ── Coincidencias AcoustID sin recordings ────────────────────────── */}
-      {catalog && catalog.report.matches.length === 0 && catalog.report.acoustIdOnlyTracks.length > 0 && (
-        <section className="section">
-          <h3>Huella reconocida (AcoustID)</h3>
-          <ul className="list">
-            {catalog.report.acoustIdOnlyTracks.slice(0, 10).map((t) => (
-              <li key={t.trackId}>
-                <a href={acoustIdTrackUrl(t.trackId)} target="_blank" rel="noreferrer">
-                  Track {t.trackId}
-                </a>{" "}
-                <span className="muted">score {t.scorePercent}%</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* ── Subida IPFS + Registro on-chain ──────────────────────────────── */}
       {result && file && wallet.address && wallet.signMessage && (
-        <IPFSUploadForm
-          fingerprint={result}
-          audioFile={file}
-          ownerAddress={wallet.address}
-          signMessage={wallet.signMessage}
-          authenticityScore={authenticityScore}
-        />
-      )}
-
-      {/* Aviso si no hay wallet conectada pero ya hay resultado */}
-      {result && !wallet.address && (
-        <p className="muted" style={{ marginTop: 12 }}>
-          Conecta tu wallet arriba para poder subir a IPFS y registrar on-chain.
-        </p>
+        <div className="animate-in slide-in-from-bottom-4 duration-500">
+          <IPFSUploadForm fingerprint={result} audioFile={file} ownerAddress={wallet.address} signMessage={wallet.signMessage} authenticityScore={authenticityScore} />
+        </div>
       )}
     </div>
   );

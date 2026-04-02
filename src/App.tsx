@@ -13,7 +13,7 @@ export default function App() {
     <main className="app">
       <header className="app-header">
         <h1>MuSecure</h1>
-        <p className="tagline">Prototipo: huella acústica en cliente antes de IPFS / cadena</p>
+        <p className="tagline">Protege tu obra musical con acoustic fingerprints y blockchain</p>
       </header>
 
       <nav className="tabs" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
