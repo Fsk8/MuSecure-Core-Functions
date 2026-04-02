@@ -1,13 +1,36 @@
 import { FingerprintUploader } from "@/components/FingerprintUploader";
 import { Dashboard } from "@/pages/Dashboard";
-import { Explorer } from "@/components/Explorer"; // Asegúrate de haber creado este archivo
+import { Explorer } from "@/components/Explorer"; 
 import { useState } from "react";
 
-// Definimos los tipos de pestañas disponibles
 type Tab = "upload" | "dashboard" | "explorer";
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("explorer"); // Lo pongo en explorer por defecto para que la demo no se vea vacía al entrar
+  const [tab, setTab] = useState<Tab>("explorer");
+
+  // Estilos base para los botones
+  const buttonStyle = {
+    padding: '10px 20px',
+    borderRadius: '12px',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    transition: 'all 0.2s border',
+    border: '1px solid #27272a', // zinc-800
+  };
+
+  const activeStyle = {
+    ...buttonStyle,
+    backgroundColor: '#4f46e5', // indigo-600
+    color: '#ffffff',
+    border: '1px solid #6366f1',
+  };
+
+  const inactiveStyle = {
+    ...buttonStyle,
+    backgroundColor: '#09090b', // casi negro
+    color: '#71717a', // zinc-500 (gris legible)
+  };
 
   return (
     <main className="app">
@@ -16,24 +39,30 @@ export default function App() {
         <p className="tagline">Protege tu obra musical con acoustic fingerprints y blockchain</p>
       </header>
 
-      <nav className="tabs" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+      {/* Navegación con contraste corregido */}
+      <nav className="tabs" style={{ 
+        display: 'flex', 
+        gap: '10px', 
+        marginBottom: '30px',
+        justifyContent: 'center' // Esto los centra un poco respecto al header
+      }}>
         <button
           type="button"
-          className={tab === "explorer" ? "tab active" : "tab"}
+          style={tab === "explorer" ? activeStyle : inactiveStyle}
           onClick={() => setTab("explorer")}
         >
           Explorar Comunidad
         </button>
         <button
           type="button"
-          className={tab === "upload" ? "tab active" : "tab"}
+          style={tab === "upload" ? activeStyle : inactiveStyle}
           onClick={() => setTab("upload")}
         >
           Subir Obra
         </button>
         <button
           type="button"
-          className={tab === "dashboard" ? "tab active" : "tab"}
+          style={tab === "dashboard" ? activeStyle : inactiveStyle}
           onClick={() => setTab("dashboard")}
         >
           Mis Registros (Local)

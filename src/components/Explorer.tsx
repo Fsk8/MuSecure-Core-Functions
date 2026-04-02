@@ -11,7 +11,13 @@ export const Explorer: React.FC = () => {
       try {
         setLoading(true);
         const allFiles = await lighthouseService.listUploads();
-        setSongs(allFiles || []);
+        
+        // FILTRO: Solo archivos que NO terminen en .json
+        const onlyAudio = (allFiles || []).filter((file: any) => 
+          !file.fileName.toLowerCase().endsWith('.json')
+        );
+        
+        setSongs(onlyAudio);
       } catch (error) {
         console.error("Error cargando el Explorer:", error);
       } finally {
