@@ -1,34 +1,22 @@
-/**
- * MuSecure – components/EncryptedAudioPlayer.tsx
- *
- * Reproductor para audio encriptado con Lighthouse.
- * El usuario debe tener la wallet que encriptó el archivo conectada.
- *
- * Uso en Dashboard:
- *   <EncryptedAudioPlayer cid={item.audioCid} ownerAddress={item.ownerAddress} signMessage={wallet.signMessage} />
- *
- * Uso en Explorer:
- *   <EncryptedAudioPlayer cid={song.cid} ownerAddress={connectedAddress} signMessage={wallet.signMessage} />
- */
-
 import { useState, useRef, useEffect } from "react";
 import lighthouse from "@lighthouse-web3/sdk";
 
 interface Props {
   cid: string;
   ownerAddress: string;
-  signMessage: (message: string) => Promise<string>;
+  // Cambié el tipo para que sea más flexible con lo que devuelve ethers/wagmi
+  signMessage: (message: string) => Promise<string | any>;
 }
 
 type DecryptState = "idle" | "signing" | "fetching-key" | "decrypting" | "ready" | "error";
 
 const STATE_MSG: Record<DecryptState, string> = {
   idle:           "",
-  signing:        "Firmando con wallet...",
-  "fetching-key": "Obteniendo clave de descifrado...",
+  signing:        "Firmando con tu wallet...",
+  "fetching-key": "Validando acceso en Filecoin...",
   decrypting:     "Descifrando audio...",
-  ready:          "",
-  error:          "",
+  ready:          "Listo",
+  error:          "Error de acceso",
 };
 
 export function EncryptedAudioPlayer({ cid, ownerAddress, signMessage }: Props) {
@@ -37,7 +25,7 @@ export function EncryptedAudioPlayer({ cid, ownerAddress, signMessage }: Props) 
   const [error, setError] = useState<string | null>(null);
   const prevBlobUrl = useRef<string | null>(null);
 
-  // Limpiar blob URL al desmontar
+  // Limpiar memoria al desmontar
   useEffect(() => {
     return () => {
       if (prevBlobUrl.current) URL.revokeObjectURL(prevBlobUrl.current);
@@ -49,15 +37,17 @@ export function EncryptedAudioPlayer({ cid, ownerAddress, signMessage }: Props) 
     setDecryptState("signing");
 
     try {
-      // 1. Obtener mensaje de autenticación de Lighthouse
+      // 1. Obtener mensaje de Lighthouse
+      // IMPORTANTE: El address debe ser el de la wallet ACTUAL conectada, 
+      // no necesariamente el del owner original si es que hay permisos compartidos.
       const authRes = await lighthouse.getAuthMessage(ownerAddress);
-      const message = authRes?.data?.message;
-      if (!message) throw new Error("No se pudo obtener mensaje de autenticación de Lighthouse.");
+      if (!authRes.data?.message) throw new Error("Error de comunicación con Lighthouse.");
 
-      // 2. Firmar con la wallet
-      const signature = await signMessage(message);
+      // 2. Firmar
+      const signature = await signMessage(authRes.data.message);
+      if (!signature) throw new Error("Firma cancelada.");
 
-      // 3. Obtener la clave de encriptación del archivo
+      // 3. Obtener clave
       setDecryptState("fetching-key");
       const keyRes = await lighthouse.fetchEncryptionKey(
         cid,
@@ -65,105 +55,128 @@ export function EncryptedAudioPlayer({ cid, ownerAddress, signMessage }: Props) 
         signature
       );
 
-      const encryptionKey = keyRes?.data?.key;
+      const encryptionKey = keyRes.data?.key;
+      
+      // Si no hay key, es casi seguro que no tienes acceso
       if (!encryptionKey) {
-        throw new Error("No se pudo obtener la clave. ¿Estás usando la wallet correcta?");
+        throw new Error("ACCESO_DENEGADO");
       }
 
       // 4. Descifrar el archivo
       setDecryptState("decrypting");
       const decrypted = await lighthouse.decryptFile(cid, encryptionKey);
 
-      // decrypted es un ArrayBuffer o Uint8Array según la versión del SDK
-        const rawBuffer = decrypted instanceof Uint8Array
-        ? decrypted.buffer
-        : decrypted as ArrayBuffer;
-        const blob = new Blob([rawBuffer as ArrayBuffer], { type: "audio/mpeg" });
-        const url = URL.createObjectURL(blob);
+      // Manejo seguro del buffer (Lighthouse a veces devuelve Blob o ArrayBuffer)
+      let audioBlob: Blob;
+      if (decrypted instanceof Blob) {
+        audioBlob = decrypted;
+      } else {
+        const rawBuffer = (decrypted as any).buffer || decrypted;
+        audioBlob = new Blob([rawBuffer], { type: "audio/mpeg" });
+      }
 
-      // Limpiar blob anterior
+      const url = URL.createObjectURL(audioBlob);
+
       if (prevBlobUrl.current) URL.revokeObjectURL(prevBlobUrl.current);
       prevBlobUrl.current = url;
       setBlobUrl(url);
       setDecryptState("ready");
 
-    } catch (e) {
-      const msg = (e as Error).message ?? "Error desconocido";
-      const friendly = msg.includes("rejected") || msg.includes("denied")
-        ? "Firma rechazada por el usuario."
-        : msg.includes("key") || msg.includes("clave")
-        ? "No tienes acceso a este archivo. Solo el owner puede desencriptar."
-        : msg;
-      setError(friendly);
+    } catch (e: any) {
+      console.error("MuSecure Decrypt Error:", e);
+      
+      let friendlyMessage = "No tienes permiso para desencriptar esta obra.";
+      
+      if (e.message === "ACCESO_DENEGADO" || e.status === 401) {
+        friendlyMessage = "⚠️ No tienes permisos para esta obra.";
+      } else if (e.message?.includes("rejected") || e.code === 4001) {
+        friendlyMessage = "Firma rechazada en la wallet.";
+      } else if (e.message?.includes("network")) {
+        friendlyMessage = "Error de red. Revisa tu conexión.";
+      }
+
+      setError(friendlyMessage);
       setDecryptState("error");
     }
   };
 
+  const handleClose = () => {
+    if (prevBlobUrl.current) URL.revokeObjectURL(prevBlobUrl.current);
+    prevBlobUrl.current = null;
+    setBlobUrl(null);
+    setDecryptState("idle");
+    setError(null);
+  };
+
+  // UI del reproductor listo
   if (decryptState === "ready" && blobUrl) {
     return (
-      <div className="encrypted-player">
-        <audio
-          controls
-          autoPlay={false}
-          src={blobUrl}
-          style={{ width: "100%", marginTop: 4 }}
-        />
-        <button
-          type="button"
-          onClick={() => {
-            if (prevBlobUrl.current) URL.revokeObjectURL(prevBlobUrl.current);
-            prevBlobUrl.current = null;
-            setBlobUrl(null);
-            setDecryptState("idle");
-          }}
-          style={{ fontSize: "0.7rem", marginTop: 4, opacity: 0.5 }}
-        >
-          Cerrar
+      <div className="encrypted-player-ready" style={{ width: '100%' }}>
+        <audio controls src={blobUrl} style={{ width: "100%" }} />
+        <button onClick={handleClose} style={{ 
+          display: 'block', margin: '8px auto 0', fontSize: '0.65rem', 
+          background: 'transparent', border: '1px solid #333', color: '#666',
+          borderRadius: '4px', cursor: 'pointer' 
+        }}>
+          Cerrar Reproductor
         </button>
       </div>
     );
   }
 
-  const isLoading = decryptState !== "idle" && decryptState !== "error";
+  const isLoading = ["signing", "fetching-key", "decrypting"].includes(decryptState);
 
   return (
-    <div className="encrypted-player">
+    <div className="encrypted-player-controls">
       {error && (
-        <p style={{ color: "#ef4444", fontSize: "0.75rem", marginBottom: 6 }}>
+        <div style={{ 
+          background: "rgba(239, 68, 68, 0.1)", border: "1px solid #ef4444",
+          color: "#ef4444", padding: "8px", borderRadius: "8px", 
+          fontSize: "0.75rem", marginBottom: "8px" 
+        }}>
           {error}
-        </p>
+        </div>
       )}
 
       <button
         type="button"
         onClick={handleDecrypt}
         disabled={isLoading}
+        className="btn-decrypt"
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          fontSize: "0.75rem",
-          padding: "6px 12px",
-          borderRadius: 8,
+          width: "100%",
+          padding: "10px",
+          borderRadius: "10px",
+          backgroundColor: isLoading ? "#27272a" : "#4f46e5",
+          color: "white",
+          border: "none",
           cursor: isLoading ? "not-allowed" : "pointer",
-          opacity: isLoading ? 0.7 : 1,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: "8px",
+          fontWeight: "600",
+          fontSize: "0.8rem"
         }}
       >
         {isLoading ? (
           <>
-            <span style={{
-              width: 12, height: 12, border: "2px solid currentColor",
-              borderTopColor: "transparent", borderRadius: "50%",
-              display: "inline-block", animation: "spin 0.8s linear infinite"
-            }} />
-            {STATE_MSG[decryptState]}
+            <div className="spinner" />
+            <span>{STATE_MSG[decryptState]}</span>
           </>
         ) : (
-          <>🔓 Desencriptar y escuchar</>
+          "🔓 Desencriptar y escuchar"
         )}
       </button>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        .spinner {
+          width: 14px; height: 14px; border: 2px solid #fff;
+          border-top-color: transparent; border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 }
