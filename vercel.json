@@ -8,7 +8,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; connect-src 'self' https://sepolia-rollup.arbitrum.io https://*.lighthouse.storage https://api.studio.thegraph.com https://*.infura.io https://*.alchemy.com blob:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.lighthouse.storage; media-src 'self' blob: https://*.lighthouse.storage https://gateway.lighthouse.storage;"
+          "value": "default-src 'self'; connect-src 'self' https://api.acoustid.org https://*.musicbrainz.org https://sepolia-rollup.arbitrum.io https://*.arbitrum.io https://*.lighthouse.storage https://gateway.lighthouse.storage https://api.studio.thegraph.com https://*.infura.io https://*.alchemy.com blob:; script-src 'self' 'unsafe-eval' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.lighthouse.storage https://gateway.lighthouse.storage https://*.musicbrainz.org https://coverartarchive.org; media-src 'self' blob: https://*.lighthouse.storage https://gateway.lighthouse.storage;"
         }
       ]
     }
