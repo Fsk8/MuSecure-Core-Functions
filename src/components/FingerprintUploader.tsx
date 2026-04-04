@@ -6,13 +6,23 @@ import type { CatalogAuthenticityReport } from "@/types/acoustid";
 import { IPFSUploadForm } from "@/components/IPFSUploadForm";
 import { useWallet } from "@/hooks/useWallet";
 
-interface ProgressState { stage: string; percent: number; }
+interface ProgressState { 
+  stage: string; 
+  percent: number; 
+}
 
 export function FingerprintUploader() {
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<ProgressState | null>(null);
   const [result, setResult] = useState<FingerprintResult | null>(null);
-  const [catalog, setCatalog] = useState<{ report: CatalogAuthenticityReport; durationSec: number; } | null>(null);
+  
+  // <-- Actualizamos el estado para aceptar el rawJson
+  const [catalog, setCatalog] = useState<{ 
+    report: CatalogAuthenticityReport; 
+    durationSec: number; 
+    rawJson?: any; 
+  } | null>(null);
+  
   const [error, setError] = useState<string | null>(null);
 
   const acoustIdKey = getAcoustIdClientKey();
@@ -20,16 +30,21 @@ export function FingerprintUploader() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFile(e.target.files?.[0] ?? null);
-    setResult(null); setCatalog(null); setError(null);
+    setResult(null); 
+    setCatalog(null); 
+    setError(null);
   };
 
   const handleAnalyze = useCallback(async () => {
     if (!file) return;
-    setError(null); setResult(null); setCatalog(null);
+    setError(null); 
+    setResult(null); 
+    setCatalog(null);
     setProgress({ stage: "Iniciando…", percent: 0 });
 
     try {
       const svc = AudioFingerprintService.getInstance();
+      
       const custom = await svc.generateFingerprint(file, (stage, pct) => {
         setProgress({ stage: `Analizando: ${stage}`, percent: 10 + pct * 0.45 });
       });
@@ -40,8 +55,10 @@ export function FingerprintUploader() {
           if (s === "chromaprint") setProgress({ stage: "Generando Chromaprint…", percent: 55 });
           if (s === "acoustid") setProgress({ stage: "Consultando Catálogos…", percent: 80 });
         });
-        setCatalog({ report: out.report, durationSec: out.durationSec });
+        // <-- Guardamos el rawJson en el estado de React
+        setCatalog({ report: out.report, durationSec: out.durationSec, rawJson: out.rawJson });
       }
+      
       setProgress({ stage: "Análisis completado", percent: 100 });
     } catch (e) {
       setError((e as Error).message);
@@ -50,7 +67,10 @@ export function FingerprintUploader() {
     }
   }, [file, acoustIdKey]);
 
-  const authenticityScore = catalog?.report.catalogMatchScore ?? 0;
+  // Variables seguras para TypeScript
+  const authenticityScore = catalog?.report?.catalogMatchScore ?? 0;
+  // Extraemos la info de los catálogos directamente de la respuesta cruda, sin errores
+  const matches = catalog?.rawJson?.externalMatches || [];
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 p-6">
@@ -61,7 +81,10 @@ export function FingerprintUploader() {
             <p className="text-zinc-500 text-sm mt-1">Genera la huella digital antes de subirla</p>
           </div>
           {!wallet.address ? (
-            <button onClick={wallet.connect} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-sm font-bold transition-all">
+            <button 
+              onClick={wallet.connect} 
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-sm font-bold transition-all"
+            >
               🔗 Conectar Wallet
             </button>
           ) : (
@@ -73,32 +96,92 @@ export function FingerprintUploader() {
 
         <div className="space-y-4">
           <div className="flex items-center gap-4">
-            <input type="file" accept="audio/*" onChange={handleFileChange} className="block w-full text-sm text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-zinc-800 file:text-zinc-300 hover:file:bg-zinc-700 cursor-pointer" />
-            <button onClick={handleAnalyze} disabled={!file || !!progress} className="bg-white text-black px-6 py-2 rounded-full font-bold hover:bg-zinc-200 disabled:opacity-50">
+            <input 
+              type="file" 
+              accept="audio/*" 
+              onChange={handleFileChange} 
+              className="block w-full text-sm text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-zinc-800 file:text-zinc-300 hover:file:bg-zinc-700 cursor-pointer" 
+            />
+            <button 
+              onClick={handleAnalyze} 
+              disabled={!file || !!progress} 
+              className="bg-white text-black px-6 py-2 rounded-full font-bold hover:bg-zinc-200 disabled:opacity-50 transition-colors"
+            >
               {progress ? `${Math.round(progress.percent)}%` : "Analizar"}
             </button>
           </div>
-          {progress && <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden"><div className="bg-indigo-500 h-full transition-all duration-300" style={{ width: `${progress.percent}%` }} /></div>}
+          
+          {progress && (
+            <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+              <div 
+                className="bg-indigo-500 h-full transition-all duration-300" 
+                style={{ width: `${progress.percent}%` }} 
+              />
+            </div>
+          )}
+          
           {error && <p className="text-red-500 text-xs font-mono">{error}</p>}
         </div>
 
         {result && (
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in">
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2">
+            
             <div className="bg-black/20 border border-zinc-800 p-4 rounded-2xl">
               <h4 className="text-[10px] text-zinc-500 uppercase font-bold mb-2 tracking-widest">Hash SHA-256</h4>
               <p className="text-zinc-300 font-mono text-[10px] truncate">0x{result.sha256}</p>
             </div>
+
             <div className="bg-black/20 border border-zinc-800 p-4 rounded-2xl">
-              <h4 className="text-[10px] text-zinc-500 uppercase font-bold mb-2 tracking-widest">Probabilidad de plagio</h4>
-              <p className={`text-xl font-bold ${authenticityScore >= 90 ? 'text-red-500' : 'text-emerald-500'}`}>{authenticityScore}%</p>
+              <h4 className="text-[10px] text-zinc-500 uppercase font-bold mb-2 tracking-widest">Score de Originalidad</h4>
+              <p className={`text-xl font-bold ${authenticityScore >= 90 ? 'text-red-500' : 'text-emerald-500'}`}>
+                {100 - authenticityScore}%
+              </p>
             </div>
+
+            {/* Catálogos Globales */}
+            {matches.length > 0 && (
+              <div className="md:col-span-2 bg-indigo-500/5 border border-indigo-500/20 p-5 rounded-2xl">
+                <h4 className="text-[10px] text-indigo-400 uppercase font-bold mb-4 tracking-widest">
+                  Coincidencias en Catálogos Globales
+                </h4>
+                <div className="space-y-4">
+                  {matches.map((match: any, i: number) => (
+                    <div key={i} className="flex justify-between items-center border-b border-zinc-800/50 pb-3 last:border-0 last:pb-0">
+                      <div>
+                        <p className="text-white text-sm font-bold">{match.title}</p>
+                        <p className="text-zinc-500 text-[10px]">{match.artist}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-indigo-400 text-xs font-mono block font-bold">
+                          {(match.score * 100).toFixed(1)}% match
+                        </span>
+                        <a 
+                          href={`https://musicbrainz.org/recording/${match.recordingId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] text-zinc-400 hover:text-white underline transition-colors"
+                        >
+                          MusicBrainz Link ↗
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {result && file && wallet.address && wallet.signMessage && (
         <div className="animate-in slide-in-from-bottom-4 duration-500">
-          <IPFSUploadForm fingerprint={result} audioFile={file} ownerAddress={wallet.address} signMessage={wallet.signMessage} authenticityScore={authenticityScore} />
+          <IPFSUploadForm 
+            fingerprint={result} 
+            audioFile={file} 
+            ownerAddress={wallet.address} 
+            signMessage={wallet.signMessage} 
+            authenticityScore={authenticityScore} 
+          />
         </div>
       )}
     </div>

@@ -40,7 +40,18 @@ export async function lookupAcoustId(params: {
   const json = (await res.json()) as AcoustIdLookupJson;
 
   const results = (json as any).results ?? [];
-  console.log("[AcoustID] Respuesta:", {
+  
+  // PROCESAMIENTO: Aplanamos la estructura anidada de AcoustID para react
+  const externalMatches = results.flatMap((res: any) => 
+    (res.recordings ?? []).map((rec: any) => ({
+      title: rec.title,
+      artist: rec.artists?.map((a: any) => a.name).join(", ") || "Unknown Artist",
+      score: res.score,
+      recordingId: rec.id // ID clave para MusicBrainz
+    }))
+  );
+
+  console.log("[AcoustID] Respuesta cruda:", {
     status: json.status,
     resultsCount: results.length,
     firstScore: results[0]?.score,
@@ -48,5 +59,11 @@ export async function lookupAcoustId(params: {
     firstRecordingTitle: results[0]?.recordings?.[0]?.title,
   });
 
-  return json;
+  console.log("[AcoustID] Coincidencias procesadas:", externalMatches);
+
+  // Inyectamos las coincidencias procesadas directamente en el JSON de respuesta
+  return {
+    ...json,
+    externalMatches
+  } as any;
 }

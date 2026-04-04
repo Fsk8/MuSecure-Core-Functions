@@ -20,6 +20,7 @@ export async function runCatalogAuthenticityCheck(
   report: CatalogAuthenticityReport;
   acoustIdFingerprint: string;
   durationSec: number;
+  rawJson: any; // <-- AGREGADO para no perder los datos de MusicBrainz
 }> {
   onStage?.("chromaprint");
   const { fingerprint, durationSec } = await generateChromaprintForAcoustId(file);
@@ -33,5 +34,7 @@ export async function runCatalogAuthenticityCheck(
 
   onStage?.("done");
   const report = interpretAcoustIdLookup(json);
-  return { report, acoustIdFingerprint: fingerprint, durationSec };
+  
+  // <-- Pasamos el 'json' también en la respuesta
+  return { report, acoustIdFingerprint: fingerprint, durationSec, rawJson: json };
 }
