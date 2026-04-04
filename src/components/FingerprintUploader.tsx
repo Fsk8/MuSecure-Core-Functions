@@ -37,6 +37,15 @@ export function FingerprintUploader() {
 
   const handleAnalyze = useCallback(async () => {
     if (!file) return;
+    try {
+      const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        const tempCtx = new AudioContextClass();
+        if (tempCtx.state === 'suspended') await tempCtx.resume();
+        await tempCtx.close();
+      }
+    } catch (e) { console.warn("AudioContext skip"); }
+
     setError(null); 
     setResult(null); 
     setCatalog(null);
