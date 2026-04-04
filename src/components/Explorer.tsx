@@ -1,22 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { LighthouseService } from '../services/LighthouseService';
+import { EncryptedAudioPlayer } from './Encryptedaudioplayer';
+import { useWallet } from '@/hooks/useWallet';
 
 export const Explorer: React.FC = () => {
   const [songs, setSongs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const lighthouseService = LighthouseService.getInstance();
+  const wallet = useWallet();
 
   useEffect(() => {
     const fetchContent = async () => {
       try {
         setLoading(true);
         const allFiles = await lighthouseService.listUploads();
-        
-        // FILTRO: Solo archivos que NO terminen en .json
-        const onlyAudio = (allFiles || []).filter((file: any) => 
+        const onlyAudio = (allFiles || []).filter((file: any) =>
           !file.fileName.toLowerCase().endsWith('.json')
         );
-        
         setSongs(onlyAudio);
       } catch (error) {
         console.error("Error cargando el Explorer:", error);
@@ -29,16 +29,31 @@ export const Explorer: React.FC = () => {
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center p-20 space-y-4">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500" />
       <p className="text-zinc-400">Cargando catálogo MuSecure...</p>
     </div>
   );
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-10">
-        <h2 className="text-3xl font-bold text-white">Explorar Registros</h2>
-        <p className="text-zinc-500 text-sm mt-1">Todas las obras protegidas en la red</p>
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold text-white">Explorar Registros</h2>
+          <p className="text-zinc-500 text-sm mt-1">Todas las obras protegidas en la red</p>
+        </div>
+        {/* Wallet para poder desencriptar en el Explorer */}
+        {!wallet.address ? (
+          <button
+            onClick={wallet.connect}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all"
+          >
+            🔗 Conectar para desencriptar
+          </button>
+        ) : (
+          <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1 rounded-xl text-xs font-mono">
+            ✓ {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -50,29 +65,45 @@ export const Explorer: React.FC = () => {
           songs.map((song) => {
             const isEncrypted = !!song.encryption;
             return (
-              <div key={song.cid} className="bg-zinc-900 p-5 rounded-2xl border border-zinc-800 hover:border-zinc-700 transition-all">
+              <div key={`${song.cid}-${song.createdAt}`} className="bg-zinc-900 p-5 rounded-2xl border border-zinc-800 hover:border-zinc-700 transition-all">
                 <div className="flex justify-between items-start mb-4">
                   <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${
                     isEncrypted ? "bg-purple-500/10 text-purple-400" : "bg-emerald-500/10 text-emerald-400"
                   }`}>
                     {isEncrypted ? "🔐 Privado" : "🔓 Público"}
                   </span>
-                  <span className="text-[10px] text-zinc-600">{new Date(song.createdAt).toLocaleDateString()}</span>
+                  <span className="text-[10px] text-zinc-600">
+                    {new Date(song.createdAt).toLocaleDateString()}
+                  </span>
                 </div>
 
-                <h3 className="font-semibold text-zinc-100 truncate mb-1">{song.fileName || "Obra sin título"}</h3>
-                <p className="text-[10px] font-mono text-zinc-500 mb-4 truncate">CID: {song.cid}</p>
-                
+                <h3 className="font-semibold text-zinc-100 truncate mb-1">
+                  {song.fileName || "Obra sin título"}
+                </h3>
+                <p className="text-[10px] font-mono text-zinc-500 mb-4 truncate">
+                  CID: {song.cid}
+                </p>
+
                 {isEncrypted ? (
-                  <div className="bg-black/40 rounded-xl py-6 flex flex-col items-center justify-center border border-purple-900/10">
-                    <span className="text-xl">🔒</span>
-                    <p className="text-[10px] text-purple-400/60 mt-1 italic font-medium">Contenido Encriptado</p>
-                  </div>
+                  wallet.address && wallet.signMessage ? (
+                    <EncryptedAudioPlayer
+                      cid={song.cid}
+                      ownerAddress={wallet.address}
+                      signMessage={wallet.signMessage}
+                    />
+                  ) : (
+                    <div className="bg-black/40 rounded-xl py-6 flex flex-col items-center justify-center border border-purple-900/10">
+                      <span className="text-xl">🔒</span>
+                      <p className="text-[10px] text-purple-400/60 mt-1 italic font-medium">
+                        Conecta tu wallet para escuchar
+                      </p>
+                    </div>
+                  )
                 ) : (
-                  <audio 
-                    controls 
-                    className="w-full h-8 opacity-80 hover:opacity-100 transition-opacity" 
-                    src={LighthouseService.gatewayUrl(song.cid)} 
+                  <audio
+                    controls
+                    className="w-full h-8 opacity-80 hover:opacity-100 transition-opacity"
+                    src={LighthouseService.gatewayUrl(song.cid)}
                   />
                 )}
               </div>

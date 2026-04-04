@@ -65,7 +65,7 @@ export default function App() {
           style={tab === "dashboard" ? activeStyle : inactiveStyle}
           onClick={() => setTab("dashboard")}
         >
-          Mis Registros (Local)
+          Mis obras en Blockchain
         </button>
       </nav>
 
