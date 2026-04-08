@@ -25,41 +25,66 @@ export function RegisterWorkButton({ fingerprintHash, ipfsCid, authenticityScore
     } catch (e) { console.error("Error:", e); }
   };
 
+  // ESTADO: ÉXITO (DASHBOARD STYLE)
   if (state.step === "done") return (
-    <div className="p-6 bg-zinc-900 border border-emerald-500/20 rounded-[30px] text-center animate-in fade-in zoom-in duration-300">
-      <p className="text-emerald-400 font-black uppercase text-xs mb-2">¡Propiedad Intelectual Protegida!</p>
-      <p className="text-white font-bold mb-4">NFT Certificado #{state.tokenId}</p>
-      <a href={`https://sepolia.arbiscan.io/tx/${state.txHash}`} target="_blank" rel="noreferrer" className="text-indigo-400 text-[10px] font-black uppercase hover:underline block mb-4 tracking-widest">Ver en Arbiscan ↗</a>
-      <button onClick={reset} className="bg-white text-black font-black py-2 px-6 rounded-xl text-[10px] uppercase">Registrar otra</button>
+    <div style={{ padding: '24px', backgroundColor: '#000', borderRadius: '24px', border: '1px solid #10b98133', textAlign: 'center' }}>
+      <p style={{ color: '#10b981', fontWeight: '900', fontSize: '10px', textTransform: 'uppercase', marginBottom: '16px' }}>✓ Registro Exitoso</p>
+      <button 
+        onClick={reset} 
+        style={{ backgroundColor: '#10b981', color: '#000', border: 'none', padding: '12px 24px', borderRadius: '12px', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', cursor: 'pointer' }}
+      >
+        Proteger otro track
+      </button>
     </div>
   );
 
+  // RENDER NORMAL
   return (
-    <div className="space-y-4 pt-2">
-      <div className="flex justify-between items-center px-2">
-        <span className="text-[9px] text-indigo-400 uppercase font-black tracking-widest">Validación de Red</span>
-        <span className="text-[9px] font-black px-3 py-1 rounded-full uppercase" style={{ backgroundColor: `${risk.color}15`, color: risk.color, border: `1px solid ${risk.color}33` }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingTop: '8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 8px' }}>
+        <span style={{ fontSize: '9px', color: '#10b981', textTransform: 'uppercase', fontWeight: '900', letterSpacing: '0.1em', opacity: 0.6 }}>Validación de Red</span>
+        <span style={{ 
+          fontSize: '9px', 
+          fontWeight: '900', 
+          padding: '4px 12px', 
+          borderRadius: '999px', 
+          textTransform: 'uppercase', 
+          backgroundColor: `${risk.color}15`, 
+          color: risk.color, 
+          border: `1px solid ${risk.color}33` 
+        }}>
           {risk.label}
         </span>
       </div>
 
       {isBlocked ? (
-        <div className="w-full p-5 bg-red-500/10 border border-red-500/30 rounded-2xl text-center">
-          <p className="text-red-400 font-black uppercase text-[10px]">🚫 Registro bloqueado por plagio</p>
+        <div style={{ width: '100%', padding: '20px', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '20px', textAlign: 'center' }}>
+          <p style={{ color: '#ef4444', fontWeight: '900', textTransform: 'uppercase', fontSize: '10px', margin: 0 }}>🚫 Registro bloqueado por similitud</p>
         </div>
       ) : (
         <button
           onClick={handleRegister}
           disabled={isLoading}
-          className="w-full bg-white text-black font-black py-5 rounded-2xl hover:bg-emerald-400 transition-all flex items-center justify-center gap-2 uppercase text-[10px] tracking-widest shadow-lg"
+          style={{
+            width: '100%',
+            backgroundColor: '#ffffff',
+            color: '#000000',
+            fontWeight: '900',
+            padding: '20px',
+            borderRadius: '20px',
+            border: 'none',
+            fontSize: '10px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            cursor: isLoading ? 'default' : 'pointer',
+            transition: 'all 0.2s ease',
+            opacity: isLoading ? 0.7 : 1,
+            boxShadow: '0 10px 15px -3px rgba(16, 185, 129, 0.1)'
+          }}
         >
-          {isLoading
-            ? <><div className="animate-spin h-3 w-3 border-2 border-black border-t-transparent rounded-full" /> {state.message.toUpperCase()}</>
-            : "3. Firmar y Registrar en Arbitrum"}
+          {isLoading ? "Enviando a Arbitrum..." : "3. Firmar y Registrar"}
         </button>
       )}
-
-      {state.error && <p className="text-red-500 text-[9px] text-center font-mono font-bold uppercase">{state.error}</p>}
     </div>
   );
 }

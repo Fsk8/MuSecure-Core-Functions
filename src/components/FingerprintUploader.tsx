@@ -150,6 +150,62 @@ export const FingerprintUploader: React.FC = () => {
             {isHighRisk && (
                <p style={{ color: '#ef4444', fontSize: '9px', fontWeight: 'bold', marginTop: '12px', textTransform: 'uppercase' }}>🚫 Registro bloqueado — Coincidencia alta con catálogo</p>
             )}
+
+            {/* ── Coincidencias MusicBrainz ── */}
+            {catalogReport.matches.length > 0 && (
+              <div style={{ marginTop: '16px' }}>
+                <p style={{ fontSize: '9px', fontWeight: '900', color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+                  Coincidencias en MusicBrainz:
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {catalogReport.matches.slice(0, 5).map((m) => (
+                    <a
+                      key={m.recordingId}
+                      href={`https://musicbrainz.org/recording/${m.recordingId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', backgroundColor: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '14px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', marginRight: '12px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {m.title || "Grabación"}{m.artist ? ` — ${m.artist}` : ""}
+                        </span>
+                        {m.releaseTitle && (
+                          <span style={{ fontSize: '9px', color: '#10b981', marginTop: '2px' }}>{m.releaseTitle}</span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#10b981' }}>{m.scorePercent}%</span>
+                        <span style={{ fontSize: '8px', fontWeight: '900', color: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', padding: '3px 8px', borderRadius: '6px' }}>VER ↗</span>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Huella solo en AcoustID sin metadata MusicBrainz */}
+            {catalogReport.matches.length === 0 && catalogReport.acoustIdOnlyTracks.length > 0 && (
+              <div style={{ marginTop: '16px' }}>
+                <p style={{ fontSize: '9px', fontWeight: '900', color: '#f59e0b', textTransform: 'uppercase', marginBottom: '8px' }}>Reconocido en AcoustID:</p>
+                {catalogReport.acoustIdOnlyTracks.slice(0, 3).map((t) => (
+                  <a
+                    key={t.trackId}
+                    href={`https://acoustid.org/track/${t.trackId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', textDecoration: 'none', marginBottom: '4px' }}
+                  >
+                    <span style={{ fontSize: '9px', color: '#a3a3a3', fontFamily: 'monospace' }}>{t.trackId.slice(0, 16)}…</span>
+                    <span style={{ fontSize: '9px', color: '#f59e0b', fontWeight: 'bold' }}>{t.scorePercent}%</span>
+                  </a>
+                ))}
+              </div>
+            )}
+
+            {catalogReport.summary && (
+              <p style={{ fontSize: '9px', color: '#6b7280', fontStyle: 'italic', marginTop: '12px' }}>{catalogReport.summary}</p>
+            )}
           </div>
         )}
 
