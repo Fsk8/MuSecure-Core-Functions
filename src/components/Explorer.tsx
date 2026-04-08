@@ -1,115 +1,77 @@
 import React, { useEffect, useState } from 'react';
 import { LighthouseService } from '../services/LighthouseService';
 import { EncryptedAudioPlayer } from './Encryptedaudioplayer';
-import { useWallet } from '@/hooks/useWallet';
+import { usePrivy } from '@privy-io/react-auth';
 
 export const Explorer: React.FC = () => {
   const [songs, setSongs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const lighthouseService = LighthouseService.getInstance();
-  const wallet = useWallet();
+  const { ready, authenticated, user, login, signMessage } = usePrivy();
+  const address = user?.wallet?.address;
 
   useEffect(() => {
     const fetchContent = async () => {
       try {
         setLoading(true);
+        const lighthouseService = LighthouseService.getInstance();
         const allFiles = await lighthouseService.listUploads();
-        const onlyAudio = (allFiles || []).filter((file: any) =>
-          !file.fileName.toLowerCase().endsWith('.json')
-        );
-        setSongs(onlyAudio);
-      } catch (error) {
-        console.error("Error cargando el Explorer:", error);
-      } finally {
-        setLoading(false);
+        const unique = new Map();
+        (allFiles || []).forEach((file: any) => {
+          if (!file.fileName.toLowerCase().endsWith('.json')) {
+            unique.set(file.cid, file);
+          }
+        });
+        setSongs(Array.from(unique.values()));
+      } catch (error) { 
+        console.error("Error Explorer:", error); 
+      } finally { 
+        setLoading(false); 
       }
     };
     fetchContent();
   }, []);
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center p-20 space-y-4">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500" />
-      <p className="text-zinc-400">Cargando catálogo MuSecure...</p>
-    </div>
-  );
+  if (!ready || loading) return <div style={{ padding: '80px', textAlign: 'center', color: '#10b981', textTransform: 'uppercase', fontSize: '10px', fontWeight: '900', fontStyle: 'italic' }}>Sincronizando MuSecure...</div>;
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-6 flex justify-between items-center">
-        <div>
-          <h2 className="text-3xl font-bold text-white">Explorar Registros</h2>
-          <p className="text-zinc-500 text-sm mt-1">Todas las obras protegidas en la red</p>
-        </div>
-        {/* Wallet para poder desencriptar en el Explorer */}
-        {!wallet.address ? (
-          <button
-            onClick={wallet.connect}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all"
-          >
-            🔗 Conectar para desencriptar
-          </button>
-        ) : (
-          <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1 rounded-xl text-xs font-mono">
-            ✓ {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
-          </span>
-        )}
-      </div>
+    <div className="explorer-container">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '32px' }}>
+        {songs.map((song) => {
+          const isEncrypted = song.mimeType === "application/octet-stream" || !song.fileName.includes('.');
+          return (
+            <div key={song.cid} style={{ backgroundColor: '#111111', border: '1px solid #10b98133', padding: '32px', borderRadius: '32px', display: 'flex', flexDirection: 'column', height: '100%', transition: 'all 0.3s ease' }}>
+              <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                <span style={{ fontSize: '9px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '4px 12px', borderRadius: '9999px', backgroundColor: isEncrypted ? '#10b981' : '#27272a', color: isEncrypted ? '#000000' : '#10b981', border: isEncrypted ? 'none' : '1px solid #10b98133' }}>
+                  {isEncrypted ? 'MuSecure Protected' : 'Public Domain'}
+                </span>
+              </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {songs.length === 0 ? (
-          <p className="col-span-full text-center text-zinc-600 py-10 italic border border-dashed border-zinc-800 rounded-2xl">
-            No hay canciones registradas aún.
-          </p>
-        ) : (
-          songs.map((song) => {
-            const isEncrypted = !!song.encryption;
-            return (
-              <div key={`${song.cid}-${song.createdAt}`} className="bg-zinc-900 p-5 rounded-2xl border border-zinc-800 hover:border-zinc-700 transition-all">
-                <div className="flex justify-between items-start mb-4">
-                  <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${
-                    isEncrypted ? "bg-purple-500/10 text-purple-400" : "bg-emerald-500/10 text-emerald-400"
-                  }`}>
-                    {isEncrypted ? "🔐 Privado" : "🔓 Público"}
-                  </span>
-                  <span className="text-[10px] text-zinc-600">
-                    {new Date(song.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
+              {/* TÍTULO EN BLANCO PURO */}
+              <h3 style={{ fontWeight: 'bold', color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '1rem', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '-0.025em' }}>
+                {song.fileName || "Sin título"}
+              </h3>
+              
+              {/* CID EN VERDE MENTA BRILLANTE */}
+              <p style={{ fontSize: '10px', fontFamily: 'monospace', color: '#10b981', marginBottom: '32px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 1, fontWeight: 'bold' }}>
+                CID: {song.cid}
+              </p>
 
-                <h3 className="font-semibold text-zinc-100 truncate mb-1">
-                  {song.fileName || "Obra sin título"}
-                </h3>
-                <p className="text-[10px] font-mono text-zinc-500 mb-4 truncate">
-                  CID: {song.cid}
-                </p>
-
+              <div style={{ marginTop: 'auto' }}>
                 {isEncrypted ? (
-                  wallet.address && wallet.signMessage ? (
-                    <EncryptedAudioPlayer
-                      cid={song.cid}
-                      ownerAddress={wallet.address}
-                      signMessage={wallet.signMessage}
-                    />
+                  authenticated && address ? (
+                    <EncryptedAudioPlayer cid={song.cid} ownerAddress={address} signMessage={signMessage} />
                   ) : (
-                    <div className="bg-black/40 rounded-xl py-6 flex flex-col items-center justify-center border border-purple-900/10">
-                      <span className="text-xl">🔒</span>
-                      <p className="text-[10px] text-purple-400/60 mt-1 italic font-medium">
-                        Conecta tu wallet para escuchar
-                      </p>
-                    </div>
+                    <button onClick={() => login()} style={{ width: '100%', backgroundColor: '#059669', color: '#000000', padding: '16px', borderRadius: '16px', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', border: 'none', cursor: 'pointer', boxShadow: '0 10px 15px -3px rgba(16, 185, 129, 0.2)' }}>
+                      🔓 Conectar para Escuchar
+                    </button>
                   )
                 ) : (
-                  <audio
-                    controls
-                    className="w-full h-8 opacity-80 hover:opacity-100 transition-opacity"
-                    src={LighthouseService.gatewayUrl(song.cid)}
-                  />
+                  <audio controls preload="metadata" style={{ width: '100%', height: '40px', filter: 'invert(1) brightness(2)' }} src={`https://gateway.lighthouse.storage/ipfs/${song.cid}`} />
                 )}
               </div>
-            );
-          })
-        )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

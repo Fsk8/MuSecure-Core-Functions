@@ -1,3 +1,12 @@
+/**
+ * MuSecure – services/acoustidLookup.ts
+ *
+ * Revertido al estado correcto — Gemini inyectaba externalMatches
+ * en el JSON pero ese campo nunca llegaba a interpretAcoustIdLookup.
+ * La lógica de collectMatches en authenticityFromAcoustId.ts ya hace
+ * todo correctamente — no necesitamos procesar nada aquí.
+ */
+
 import type { AcoustIdLookupJson } from "@/types/acoustid";
 
 const LOOKUP_URL = "https://api.acoustid.org/v2/lookup";
@@ -40,18 +49,7 @@ export async function lookupAcoustId(params: {
   const json = (await res.json()) as AcoustIdLookupJson;
 
   const results = (json as any).results ?? [];
-  
-  // PROCESAMIENTO: Aplanamos la estructura anidada de AcoustID para react
-  const externalMatches = results.flatMap((res: any) => 
-    (res.recordings ?? []).map((rec: any) => ({
-      title: rec.title,
-      artist: rec.artists?.map((a: any) => a.name).join(", ") || "Unknown Artist",
-      score: res.score,
-      recordingId: rec.id // ID clave para MusicBrainz
-    }))
-  );
-
-  console.log("[AcoustID] Respuesta cruda:", {
+  console.log("[AcoustID] Respuesta:", {
     status: json.status,
     resultsCount: results.length,
     firstScore: results[0]?.score,
@@ -59,11 +57,7 @@ export async function lookupAcoustId(params: {
     firstRecordingTitle: results[0]?.recordings?.[0]?.title,
   });
 
-  console.log("[AcoustID] Coincidencias procesadas:", externalMatches);
-
-  // Inyectamos las coincidencias procesadas directamente en el JSON de respuesta
-  return {
-    ...json,
-    externalMatches
-  } as any;
+  // Devolvemos el JSON limpio — interpretAcoustIdLookup procesa
+  // los recordings correctamente via collectMatches
+  return json;
 }

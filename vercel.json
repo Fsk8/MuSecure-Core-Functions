@@ -15,12 +15,8 @@
           "value": "same-origin"
         },
         {
-          "key": "Cross-Origin-Resource-Policy",
-          "value": "cross-origin"
-        },
-        {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' 'wasm-unsafe-eval' https://vercel.live blob:; connect-src 'self' https://api.acoustid.org https://*.musicbrainz.org https://sepolia-rollup.arbitrum.io https://*.arbitrum.io https://*.lighthouse.storage https://gateway.lighthouse.storage https://api.studio.thegraph.com https://*.infura.io https://*.alchemy.com https://verify.walletconnect.com https://verify.walletconnect.org blob:; img-src 'self' data: blob: https://*.lighthouse.storage https://gateway.lighthouse.storage https://*.musicbrainz.org https://coverartarchive.org https://assets.vercel.com; media-src 'self' blob: https://*.lighthouse.storage https://gateway.lighthouse.storage; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://vercel.live; frame-src 'self' https://verify.walletconnect.com https://verify.walletconnect.org https://*.musicbrainz.org https://vercel.live;"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' 'wasm-unsafe-eval' blob:; connect-src 'self' https://api.acoustid.org https://*.musicbrainz.org https://sepolia-rollup.arbitrum.io https://*.arbitrum.io https://*.lighthouse.storage https://gateway.lighthouse.storage https://api.studio.thegraph.com https://*.infura.io https://*.alchemy.com blob:; img-src 'self' data: blob: https://*.lighthouse.storage https://gateway.lighthouse.storage https://*.musicbrainz.org https://coverartarchive.org; media-src 'self' blob: https://*.lighthouse.storage https://gateway.lighthouse.storage; worker-src 'self' blob:; style-src 'self' 'unsafe-inline';"
         }
       ]
     }

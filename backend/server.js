@@ -7,41 +7,31 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 3001;
-
-// La wallet que firma (Asegúrate que coincida con scoreSigner en el contrato)
 const signerWallet = new ethers.Wallet(process.env.SCORE_SIGNER_PRIVATE_KEY);
+console.log("✍️  Signer del Backend Activo:", signerWallet.address);
 
 app.post('/api/sign-music', async (req, res) => {
-    try {
-        const { fingerprintHash, score, userAddress } = req.body;
-        const chainId = 421614; // Arbitrum Sepolia exacto
+  try {
+    const { fingerprintHash, score, userAddress } = req.body;
+    const chainId = 421614; // Arbitrum Sepolia
 
-        console.log(`✍️ Firmando para: ${userAddress} | Score: ${score}`);
+    // Normalizar a Checksum para que coincida con msg.sender del contrato
+    const checksumAddress = ethers.getAddress(userAddress);
+    const cleanHash = fingerprintHash.startsWith('0x') ? fingerprintHash : `0x${fingerprintHash}`;
 
-        // REPLICAR EXACTAMENTE EL abi.encodePacked DEL CONTRATO
-        // Importante: El orden y los tipos deben ser idénticos al .sol
-        const messageHash = ethers.solidityPackedKeccak256(
-            ["bytes32", "uint256", "address", "uint256"],
-            [fingerprintHash, score, userAddress, chainId]
-        );
+    // Replicar: keccak256(abi.encodePacked(fingerprintHash, score, msg.sender, chainid))
+    const messageHash = ethers.solidityPackedKeccak256(
+      ["bytes32", "uint256", "address", "uint256"],
+      [cleanHash, BigInt(score), checksumAddress, BigInt(chainId)]
+    );
 
-        // Firmar el hash con el prefijo de Ethereum (\x19Ethereum Signed Message:\n32)
-        // signMessage ya aplica el prefijo automáticamente sobre los bytes
-        const signature = await signerWallet.signMessage(ethers.getBytes(messageHash));
+    // Firmar con el prefijo EIP-191
+    const signature = await signerWallet.signMessage(ethers.getBytes(messageHash));
 
-        res.json({
-            success: true,
-            signature: signature,
-            signer: signerWallet.address
-        });
-    } catch (error) {
-        console.error("❌ Error en firma:", error.message);
-        res.status(500).json({ success: false, error: error.message });
-    }
+    res.json({ success: true, signature });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
-app.listen(PORT, () => {
-    console.log(`MuSecure Signer activo en puerto ${PORT}`);
-    console.log(`Dirección del Signer: ${signerWallet.address}`);
-});
+app.listen(3001, () => console.log("🚀 Server running on port 3001"));
