@@ -1,76 +1,134 @@
-import { useState, useEffect } from "react";
+/**
+ * MuSecure – EncryptedAudioPlayer
+ * Fix: flujo correcto de Lighthouse — getAuthMessage → sign → fetchEncryptionKey → decryptFile
+ */
+
+import { useState, useEffect, useRef } from "react";
 import lighthouse from "@lighthouse-web3/sdk";
 
 interface Props {
   cid: string;
   ownerAddress: string;
-  // Cambiamos el tipo para aceptar la función de Privy
   signMessage: (message: string) => Promise<string>;
 }
 
+type State = "idle" | "signing" | "fetching-key" | "decrypting" | "ready" | "error";
+
 export function EncryptedAudioPlayer({ cid, ownerAddress, signMessage }: Props) {
-  const [decryptState, setDecryptState] = useState<"idle" | "signing" | "decrypting" | "ready">("idle");
+  const [state, setState] = useState<State>("idle");
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const prevUrl = useRef<string | null>(null);
 
-  // Liberar memoria del audio al cerrar
   useEffect(() => {
-    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
-  }, [blobUrl]);
+    return () => { if (prevUrl.current) URL.revokeObjectURL(prevUrl.current); };
+  }, []);
 
   const handleDecrypt = async () => {
-    if (!ownerAddress) return;
+    if (!ownerAddress || !cid) return;
     setError(null);
-    setDecryptState("signing");
+    setState("signing");
 
     try {
-      // 1. Obtener el mensaje de Lighthouse
-      const response = await lighthouse.getAuthMessage(ownerAddress);
-      const message = response.data.message;
+      // 1. Obtener mensaje de auth de Lighthouse
+      const authRes = await lighthouse.getAuthMessage(ownerAddress);
+      const message = authRes?.data?.message;
+      if (!message) throw new Error("No se pudo obtener el mensaje de autenticación de Lighthouse.");
 
-      // SOLUCIÓN AL ERROR TS(2345): Validamos que el mensaje exista
-      if (!message) {
-        throw new Error("No se pudo obtener el mensaje de autenticación");
-      }
-      
-      // 2. Firmar usando Privy
+      // 2. Firmar con Privy
       const signature = await signMessage(message);
-      
-      setDecryptState("decrypting");
 
-      // 3. Descifrar el archivo
-      const decryptedFile = await lighthouse.decryptFile(cid, signature);
-      
-      // 4. Crear el archivo temporal de audio
-      const url = URL.createObjectURL(new Blob([decryptedFile]));
+      // 3. Obtener clave de encriptación — este paso lo faltaba
+      setState("fetching-key");
+      const keyRes = await lighthouse.fetchEncryptionKey(cid, ownerAddress, signature);
+      const encryptionKey = keyRes?.data?.key;
+      if (!encryptionKey) throw new Error("Sin acceso. Solo el owner puede desencriptar.");
+
+      // 4. Descifrar el archivo con la clave
+      setState("decrypting");
+      const decrypted = await lighthouse.decryptFile(cid, encryptionKey);
+
+      // 5. Crear blob URL
+      const rawBuffer = decrypted instanceof Uint8Array ? decrypted.buffer : decrypted as ArrayBuffer;
+      const blob = new Blob([rawBuffer as ArrayBuffer], { type: "audio/mpeg" });
+      const url = URL.createObjectURL(blob);
+      if (prevUrl.current) URL.revokeObjectURL(prevUrl.current);
+      prevUrl.current = url;
       setBlobUrl(url);
-      setDecryptState("ready");
+      setState("ready");
+
     } catch (err: any) {
-      console.error("Error en desencriptación:", err);
-      setError(err.message || "Error al descifrar el audio");
-      setDecryptState("idle");
+      console.error("[Decrypt] Error:", err);
+      const msg = err.message?.includes("reject") || err.message?.includes("denied")
+        ? "Firma rechazada."
+        : err.message?.includes("key") || err.message?.includes("acceso")
+        ? "Sin acceso — conecta la wallet que encriptó esta obra."
+        : err.message || "Error al descifrar";
+      setError(msg);
+      setState("error");
     }
   };
 
-  if (blobUrl) {
+  const handleClose = () => {
+    if (prevUrl.current) URL.revokeObjectURL(prevUrl.current);
+    prevUrl.current = null;
+    setBlobUrl(null);
+    setState("idle");
+    setError(null);
+  };
+
+  if (state === "ready" && blobUrl) {
     return (
-      <div className="animate-in fade-in duration-500">
-        <audio src={blobUrl} controls className="w-full h-10 invert brightness-200" autoPlay />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <audio
+          controls
+          autoPlay={false}
+          src={blobUrl}
+          style={{ width: '100%', height: '40px', filter: 'invert(1) brightness(2)' }}
+        />
+        <button
+          onClick={handleClose}
+          style={{ fontSize: '8px', color: '#666', background: 'none', border: 'none', cursor: 'pointer', textTransform: 'uppercase', fontWeight: '900' }}
+        >
+          Cerrar ✕
+        </button>
       </div>
     );
   }
 
+  const isLoading = state !== "idle" && state !== "error";
+  const label = state === "signing" ? "✍️ Firma en tu Wallet..."
+    : state === "fetching-key" ? "🔑 Obteniendo clave..."
+    : state === "decrypting" ? "🔓 Descifrando..."
+    : "🔓 Desbloquear Obra";
+
   return (
-    <div className="space-y-2">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
       <button
         onClick={handleDecrypt}
-        disabled={decryptState !== "idle"}
-        className="w-full bg-zinc-800 hover:bg-indigo-600 py-4 rounded-2xl text-[10px] font-black uppercase text-white transition-all border border-zinc-700 disabled:opacity-50"
+        disabled={isLoading || !cid}
+        style={{
+          width: '100%',
+          backgroundColor: isLoading ? '#111' : '#059669',
+          color: isLoading ? '#10b981' : '#000000',
+          padding: '16px',
+          borderRadius: '16px',
+          fontSize: '10px',
+          fontWeight: '900',
+          textTransform: 'uppercase',
+          border: '1px solid #10b98133',
+          cursor: isLoading ? 'not-allowed' : 'pointer',
+          transition: 'all 0.2s',
+          opacity: isLoading ? 0.7 : 1,
+        }}
       >
-        {decryptState === "signing" ? "✍️ Firma en tu Wallet..." : 
-         decryptState === "decrypting" ? "🔓 Descifrando..." : "🔓 Desbloquear Obra"}
+        {label}
       </button>
-      {error && <p className="text-[7px] text-red-500 uppercase font-bold text-center tracking-tighter">{error}</p>}
+      {error && (
+        <p style={{ fontSize: '8px', color: '#ef4444', textTransform: 'uppercase', fontWeight: '900', textAlign: 'center', margin: 0 }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }
