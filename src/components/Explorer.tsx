@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { LighthouseService } from "@/services/LighthouseService";
-import { EncryptedAudioPlayer } from "@/components/EncryptedAudioPlayer";
+import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
 import { usePrivy } from "@privy-io/react-auth";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

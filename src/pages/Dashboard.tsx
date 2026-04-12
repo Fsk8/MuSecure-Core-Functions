@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { LighthouseService } from "@/services/LighthouseService";
 import { usePrivy } from "@privy-io/react-auth";
-import { EncryptedAudioPlayer } from "@/components/EncryptedAudioPlayer";
+import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
