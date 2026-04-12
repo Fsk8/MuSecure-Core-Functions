@@ -116,14 +116,14 @@ contract MuSecureRegistry is IMuSecureRegistry, Ownable, ReentrancyGuard, Pausab
         require(msg.value >= registrationFee,   "MuSecure: insufficient fee");
 
         // Devolver exceso de ETH al usuario
-        if (msg.value > registrationFee && registrationFee > 0) {
+        if (msg.value > registrationFee) {
             (bool refunded, ) = msg.sender.call{value: msg.value - registrationFee}("");
             require(refunded, "MuSecure: refund failed");
         }
 
         // ── Verificar firma del score (si hay signer configurado) ──────────
         if (scoreSigner != address(0)) {
-            _verifyScoreSignature(fingerprintHash, authenticityScore, scoreSig);
+            _verifyScoreSignature(fingerprintHash, authenticityScore, ipfsCid, soulbound, scoreSig);
         }
 
         // ── Evaluar riesgo ─────────────────────────────────────────────────
@@ -194,15 +194,17 @@ contract MuSecureRegistry is IMuSecureRegistry, Ownable, ReentrancyGuard, Pausab
     }
 
     /// @dev Verifica que el score fue firmado por el backend de MuSecure.
-    ///      El mensaje firmado es: keccak256(fingerprintHash, score, sender, chainId)
-    ///      Esto evita replay attacks entre redes y wallets.
+    ///      El mensaje firmado es: keccak256(fingerprintHash, score, ipfsCid, soulbound, sender, chainId, address(this))
+    ///      Esto evita replay attacks entre redes, wallets y contratos.
     function _verifyScoreSignature(
         bytes32 fingerprintHash,
         uint256 score,
+        string calldata ipfsCid,
+        bool soulbound,
         bytes calldata sig
     ) internal view {
         bytes32 msgHash = keccak256(
-            abi.encodePacked(fingerprintHash, score, msg.sender, block.chainid)
+            abi.encodePacked(fingerprintHash, score, ipfsCid, soulbound, msg.sender, block.chainid, address(this))
         );
         bytes32 ethHash = MessageHashUtils.toEthSignedMessageHash(msgHash);
         address recovered = ECDSA.recover(ethHash, sig);

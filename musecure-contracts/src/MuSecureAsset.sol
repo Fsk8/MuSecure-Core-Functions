@@ -53,13 +53,9 @@ contract MuSecureAsset is IMuSecureAsset, ERC721URIStorage, Ownable, Pausable {
     function pause()   external onlyOwner { _pause(); }
     function unpause() external onlyOwner { _unpause(); }
 
-    /// @notice Permite al dueño del token o al owner del contrato cambiar soulbound.
-    function setSoulbound(uint256 tokenId, bool _isSoulbound) external {
+    /// @notice Solo el owner del contrato puede cambiar soulbound.
+    function setSoulbound(uint256 tokenId, bool _isSoulbound) external onlyOwner {
         require(_ownerOf(tokenId) != address(0), "MuSecureAsset: token does not exist");
-        require(
-            msg.sender == ownerOf(tokenId) || msg.sender == owner(),
-            "MuSecureAsset: not token owner or contract owner"
-        );
         _soulbound[tokenId] = _isSoulbound;
         emit SoulboundStatusChanged(tokenId, _isSoulbound);
     }
@@ -81,13 +77,13 @@ contract MuSecureAsset is IMuSecureAsset, ERC721URIStorage, Ownable, Pausable {
 
         tokenId = _nextTokenId++;
 
+        _soulbound[tokenId] = soulbound;
+
         _safeMint(to, tokenId);
 
         // tokenURI apunta al metadata JSON en IPFS
         string memory uri = string(abi.encodePacked("ipfs://", ipfsCid));
         _setTokenURI(tokenId, uri);
-
-        _soulbound[tokenId] = soulbound;
 
         emit CertificateMinted(to, tokenId, ipfsCid, soulbound);
     }

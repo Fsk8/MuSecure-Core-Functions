@@ -1,11 +1,6 @@
-/**
- * MuSecure – main.tsx
- * Envuelve la app con PrivyProvider.
- */
-
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { PrivyProviderWrapper } from "@/components/Privyproviderwrapper";
+import { PrivyProviderWrapper } from "@/components/PrivyProviderWrapper";
 import App from "./App";
 import "./index.css";
 

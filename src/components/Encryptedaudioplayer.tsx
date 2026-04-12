@@ -1,10 +1,8 @@
-/**
- * MuSecure – EncryptedAudioPlayer
- * Fix: flujo correcto de Lighthouse — getAuthMessage → sign → fetchEncryptionKey → decryptFile
- */
-
 import { useState, useEffect, useRef } from "react";
 import lighthouse from "@lighthouse-web3/sdk";
+import { Button } from "@/components/ui/button";
+import { motion, AnimatePresence } from "motion/react";
+import { Lock, Pause, Play } from "lucide-react";
 
 interface Props {
   cid: string;
@@ -12,123 +10,200 @@ interface Props {
   signMessage: (message: string) => Promise<string>;
 }
 
-type State = "idle" | "signing" | "fetching-key" | "decrypting" | "ready" | "error";
+function WaveformBars({ playing }: { playing: boolean }) {
+  return (
+    <div className="flex items-end gap-[3px] h-8">
+      {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+        <motion.div
+          key={i}
+          className="w-[3px] rounded-full bg-emerald-500"
+          animate={
+            playing
+              ? { height: [6, 14 + Math.random() * 14, 6] }
+              : { height: 6 }
+          }
+          transition={
+            playing
+              ? {
+                  duration: 0.6 + Math.random() * 0.4,
+                  repeat: Infinity,
+                  delay: i * 0.08,
+                  ease: "easeInOut",
+                }
+              : { duration: 0.3 }
+          }
+        />
+      ))}
+    </div>
+  );
+}
 
 export function EncryptedAudioPlayer({ cid, ownerAddress, signMessage }: Props) {
-  const [state, setState] = useState<State>("idle");
+  const [decryptState, setDecryptState] = useState<
+    "idle" | "signing" | "decrypting" | "ready"
+  >("idle");
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const prevUrl = useRef<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
-    return () => { if (prevUrl.current) URL.revokeObjectURL(prevUrl.current); };
-  }, []);
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [blobUrl]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onTimeUpdate = () => {
+      if (audio.duration) {
+        setProgress((audio.currentTime / audio.duration) * 100);
+      }
+    };
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onEnded = () => {
+      setIsPlaying(false);
+      setProgress(0);
+    };
+
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("ended", onEnded);
+
+    return () => {
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("ended", onEnded);
+    };
+  }, [blobUrl]);
 
   const handleDecrypt = async () => {
-    if (!ownerAddress || !cid) return;
+    if (!ownerAddress) return;
     setError(null);
-    setState("signing");
+    setDecryptState("signing");
 
     try {
-      // 1. Obtener mensaje de auth de Lighthouse
-      const authRes = await lighthouse.getAuthMessage(ownerAddress);
-      const message = authRes?.data?.message;
-      if (!message) throw new Error("No se pudo obtener el mensaje de autenticación de Lighthouse.");
+      const response = await lighthouse.getAuthMessage(ownerAddress);
+      const message = response.data.message;
 
-      // 2. Firmar con Privy
+      if (!message) {
+        throw new Error("No se pudo obtener el mensaje de autenticacion");
+      }
+
       const signature = await signMessage(message);
+      setDecryptState("decrypting");
 
-      // 3. Obtener clave de encriptación — este paso lo faltaba
-      setState("fetching-key");
-      const keyRes = await lighthouse.fetchEncryptionKey(cid, ownerAddress, signature);
-      const encryptionKey = keyRes?.data?.key;
-      if (!encryptionKey) throw new Error("Sin acceso. Solo el owner puede desencriptar.");
-
-      // 4. Descifrar el archivo con la clave
-      setState("decrypting");
-      const decrypted = await lighthouse.decryptFile(cid, encryptionKey);
-
-      // 5. Crear blob URL
-      const rawBuffer = decrypted instanceof Uint8Array ? decrypted.buffer : decrypted as ArrayBuffer;
-      const blob = new Blob([rawBuffer as ArrayBuffer], { type: "audio/mpeg" });
-      const url = URL.createObjectURL(blob);
-      if (prevUrl.current) URL.revokeObjectURL(prevUrl.current);
-      prevUrl.current = url;
+      const decryptedFile = await lighthouse.decryptFile(cid, signature);
+      const url = URL.createObjectURL(new Blob([decryptedFile]));
       setBlobUrl(url);
-      setState("ready");
-
-    } catch (err: any) {
-      console.error("[Decrypt] Error:", err);
-      const msg = err.message?.includes("reject") || err.message?.includes("denied")
-        ? "Firma rechazada."
-        : err.message?.includes("key") || err.message?.includes("acceso")
-        ? "Sin acceso — conecta la wallet que encriptó esta obra."
-        : err.message || "Error al descifrar";
+      setDecryptState("ready");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error al descifrar";
+      console.error("[EncryptedAudioPlayer] Decryption failed:", msg);
       setError(msg);
-      setState("error");
+      setDecryptState("idle");
     }
   };
 
-  const handleClose = () => {
-    if (prevUrl.current) URL.revokeObjectURL(prevUrl.current);
-    prevUrl.current = null;
-    setBlobUrl(null);
-    setState("idle");
-    setError(null);
+  const togglePlayback = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.play();
+    }
   };
 
-  if (state === "ready" && blobUrl) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <audio
-          controls
-          autoPlay={false}
-          src={blobUrl}
-          style={{ width: '100%', height: '40px', filter: 'invert(1) brightness(2)' }}
-        />
-        <button
-          onClick={handleClose}
-          style={{ fontSize: '8px', color: '#666', background: 'none', border: 'none', cursor: 'pointer', textTransform: 'uppercase', fontWeight: '900' }}
-        >
-          Cerrar ✕
-        </button>
-      </div>
-    );
-  }
-
-  const isLoading = state !== "idle" && state !== "error";
-  const label = state === "signing" ? "✍️ Firma en tu Wallet..."
-    : state === "fetching-key" ? "🔑 Obteniendo clave..."
-    : state === "decrypting" ? "🔓 Descifrando..."
-    : "🔓 Desbloquear Obra";
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const audio = audioRef.current;
+    if (!audio || !audio.duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    audio.currentTime = pct * audio.duration;
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <button
-        onClick={handleDecrypt}
-        disabled={isLoading || !cid}
-        style={{
-          width: '100%',
-          backgroundColor: isLoading ? '#111' : '#059669',
-          color: isLoading ? '#10b981' : '#000000',
-          padding: '16px',
-          borderRadius: '16px',
-          fontSize: '10px',
-          fontWeight: '900',
-          textTransform: 'uppercase',
-          border: '1px solid #10b98133',
-          cursor: isLoading ? 'not-allowed' : 'pointer',
-          transition: 'all 0.2s',
-          opacity: isLoading ? 0.7 : 1,
-        }}
-      >
-        {label}
-      </button>
-      {error && (
-        <p style={{ fontSize: '8px', color: '#ef4444', textTransform: 'uppercase', fontWeight: '900', textAlign: 'center', margin: 0 }}>
-          {error}
-        </p>
-      )}
+    <div className="space-y-2">
+      <AnimatePresence mode="wait">
+        {blobUrl ? (
+          <motion.div
+            key="player"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex items-center gap-4 rounded-xl bg-black/60 p-3 border border-surface-border"
+          >
+            <audio ref={audioRef} src={blobUrl} preload="auto" />
+
+            <button
+              onClick={togglePlayback}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-black transition-transform hover:scale-105 active:scale-95"
+            >
+              {isPlaying ? (
+                <Pause className="h-4 w-4" />
+              ) : (
+                <Play className="h-4 w-4 ml-0.5" />
+              )}
+            </button>
+
+            <div className="flex flex-1 items-center gap-3">
+              <WaveformBars playing={isPlaying} />
+              <div
+                className="relative h-1.5 flex-1 cursor-pointer rounded-full bg-surface-overlay"
+                onClick={handleSeek}
+              >
+                <motion.div
+                  className="absolute inset-y-0 left-0 rounded-full bg-emerald-500"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div key="unlock" exit={{ opacity: 0, scale: 0.95 }}>
+            <Button
+              onClick={handleDecrypt}
+              disabled={decryptState !== "idle"}
+              variant="violet"
+              className="w-full h-12"
+            >
+              {decryptState === "signing" && (
+                <motion.span
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="inline-block"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                </motion.span>
+              )}
+              {decryptState === "signing"
+                ? "Firmando..."
+                : decryptState === "decrypting"
+                  ? "Descifrando..."
+                  : "Desbloquear Obra"}
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {error && (
+          <motion.p
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="text-center font-mono text-[10px] text-red-400"
+          >
+            {error}
+          </motion.p>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

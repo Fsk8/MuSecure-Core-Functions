@@ -1,25 +1,28 @@
-/**
- * MuSecure – Dashboard v2 (Privy Edition)
- * Fixes:
- * - "CARGANDO..." mientras espera metadata → skeleton animado
- * - Audio usa ciphertextCid de la metadata, no el CID de la metadata
- * - Reproductor público con preload="metadata" para que el play no desaparezca
- * - Visibilidad solo se muestra cuando metadata ya cargó
- */
-
 import { useCallback, useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { LighthouseService } from "@/services/LighthouseService";
 import { usePrivy } from "@privy-io/react-auth";
 import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { motion } from "motion/react";
+import { RefreshCw, ExternalLink, Shield, Music, Headphones } from "lucide-react";
 import type { MuSecureMetadata } from "@/types/ipfs";
 
 const REGISTRY_ABI = [
   "event WorkRegistered(address indexed author, bytes32 indexed fingerprintHash, string ipfsCid, uint256 authenticityScore, uint8 riskLevel, uint256 tokenId, uint256 timestamp)",
 ];
 
-const RISK_LABEL = ["Low Risk", "Medium Risk", "High Risk", "Blocked"];
-const RISK_COLOR = ["#10b981", "#f59e0b", "#ef4444", "#6b21a8"];
+const RISK_LABEL = ["Bajo Riesgo", "Riesgo Medio", "Alto Riesgo", "Bloqueado"];
+
+const RISK_VARIANT: Record<number, "success" | "warning" | "danger" | "violet"> = {
+  0: "success",
+  1: "warning",
+  2: "danger",
+  3: "violet",
+};
 
 interface WorkItem {
   fingerprintHash: string;
@@ -31,23 +34,35 @@ interface WorkItem {
   timestamp: number;
   txHash: string;
   metadata?: MuSecureMetadata;
-  metaLoading: boolean;
+  metaLoading?: boolean;
   metaError?: string;
 }
 
-function short(addr: string): string {
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
-
-// Skeleton para cuando metadata no cargó aún
-function SkeletonLine({ width, height = 12 }: { width: string; height?: number }) {
+function DashboardSkeleton() {
   return (
-    <div style={{
-      width, height, borderRadius: 6,
-      background: 'linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%)',
-      backgroundSize: '200% 100%',
-      animation: 'shimmer 1.5s infinite',
-    }} />
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-10 w-10 rounded-xl" />
+      </div>
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Card key={i} className="space-y-4">
+            <div className="flex justify-between">
+              <Skeleton className="h-5 w-20" />
+              <Skeleton className="h-5 w-24" />
+            </div>
+            <Skeleton className="h-5 w-3/4" />
+            <Skeleton className="h-4 w-1/2" />
+            <div className="grid grid-cols-2 gap-2">
+              <Skeleton className="h-16 rounded-xl" />
+              <Skeleton className="h-16 rounded-xl" />
+            </div>
+            <Skeleton className="h-12 w-full rounded-xl" />
+          </Card>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -62,20 +77,32 @@ export function Dashboard() {
   const loadWorks = useCallback(async (ownerAddress: string) => {
     setLoading(true);
     setError(null);
-    setWorks([]);
     try {
       const registryAddress = import.meta.env.VITE_REGISTRY_ADDRESS as string;
-      const rpc = (import.meta.env.VITE_ARBITRUM_RPC as string) ?? "https://sepolia-rollup.arbitrum.io/rpc";
+      const rpc =
+        (import.meta.env.VITE_ARBITRUM_RPC as string) ??
+        "https://sepolia-rollup.arbitrum.io/rpc";
       const provider = new ethers.JsonRpcProvider(rpc);
-      const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, provider);
+      const registry = new ethers.Contract(
+        registryAddress,
+        REGISTRY_ABI,
+        provider
+      );
       const filter = registry.filters.WorkRegistered(ownerAddress);
       const logs = await registry.queryFilter(filter, 0, "latest");
 
-      const items: WorkItem[] = (logs as any[])
-        .map((log) => {
+      const items: WorkItem[] = logs
+        .map((log: ethers.EventLog | ethers.Log) => {
           const parsed = registry.interface.parseLog(log);
           if (!parsed) return null;
-          const { fingerprintHash, ipfsCid, authenticityScore, riskLevel, tokenId, timestamp } = parsed.args;
+          const {
+            fingerprintHash,
+            ipfsCid,
+            authenticityScore,
+            riskLevel,
+            tokenId,
+            timestamp,
+          } = parsed.args;
           return {
             fingerprintHash,
             ipfsCid,
@@ -84,7 +111,7 @@ export function Dashboard() {
             riskLevel: Number(riskLevel),
             tokenId: Number(tokenId),
             timestamp: Number(timestamp) * 1000,
-            txHash: log.transactionHash,
+            txHash: (log as ethers.EventLog).transactionHash,
             metaLoading: true,
           } as WorkItem;
         })
@@ -93,17 +120,15 @@ export function Dashboard() {
       items.sort((a, b) => b.timestamp - a.timestamp);
       setWorks(items);
 
-      // Cargar metadata de cada obra en paralelo
       items.forEach((item) => {
         fetch(LighthouseService.gatewayUrl(item.ipfsCid))
-          .then((r) => {
-            if (!r.ok) throw new Error("HTTP " + r.status);
-            return r.json();
-          })
+          .then((r) => r.json())
           .then((meta: MuSecureMetadata) => {
             setWorks((prev) =>
               prev.map((w) =>
-                w.ipfsCid === item.ipfsCid ? { ...w, metadata: meta, metaLoading: false } : w
+                w.ipfsCid === item.ipfsCid
+                  ? { ...w, metadata: meta, metaLoading: false }
+                  : w
               )
             );
           })
@@ -111,7 +136,7 @@ export function Dashboard() {
             setWorks((prev) =>
               prev.map((w) =>
                 w.ipfsCid === item.ipfsCid
-                  ? { ...w, metaLoading: false, metaError: "No se pudo cargar metadata" }
+                  ? { ...w, metaLoading: false, metaError: "Error" }
                   : w
               )
             );
@@ -129,145 +154,165 @@ export function Dashboard() {
     else setWorks([]);
   }, [ready, authenticated, address, loadWorks]);
 
-  if (!ready) return (
-    <div style={{ padding: '80px', textAlign: 'center', color: '#10b981', textTransform: 'uppercase', fontSize: '10px', fontWeight: '900', fontStyle: 'italic' }}>
-      Sincronizando...
-    </div>
-  );
-
-  if (!authenticated) return (
-    <div style={{ textAlign: 'center', padding: '80px', border: '2px dashed #10b98133', borderRadius: '40px' }}>
-      <p style={{ color: '#10b981', textTransform: 'uppercase', fontWeight: '900', fontSize: '0.75rem', marginBottom: '16px' }}>
-        Conecta tu wallet para ver tus obras
-      </p>
-      <button onClick={login} style={{ backgroundColor: '#10b981', color: '#000', border: 'none', padding: '12px 32px', borderRadius: '12px', cursor: 'pointer', fontWeight: '900', fontSize: '12px', textTransform: 'uppercase' }}>
-        Conectar
-      </button>
-    </div>
-  );
+  if (!ready || loading) return <DashboardSkeleton />;
 
   return (
-    <div style={{ padding: '20px' }}>
-      {/* Shimmer animation */}
-      <style>{`
-        @keyframes shimmer {
-          0% { background-position: -200% 0; }
-          100% { background-position: 200% 0; }
-        }
-      `}</style>
-
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#111111', border: '1px solid #10b98133', padding: '24px 32px', borderRadius: '32px', marginBottom: '40px' }}>
+    <div className="space-y-8">
+      {/* Dashboard header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h2 style={{ fontSize: '1.2rem', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase', letterSpacing: '-0.025em', margin: 0 }}>Mis Obras</h2>
-          <p style={{ fontSize: '9px', color: '#10b981', fontWeight: 'bold', textTransform: 'uppercase', marginTop: '4px' }}>Arbitrum Sepolia Ledger</p>
+          <h2 className="font-display text-xl font-bold text-white">
+            Mis Obras
+          </h2>
+          <p className="mt-1 font-mono text-[11px] uppercase tracking-wider text-emerald-500/60">
+            Arbitrum Sepolia Ledger
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <span style={{ fontSize: '10px', fontFamily: 'monospace', color: '#10b981', padding: '8px 16px', backgroundColor: 'rgba(16, 185, 129, 0.05)', borderRadius: '12px', border: '1px solid #10b98122' }}>
-            {short(address!)}
-          </span>
-          <button
-            onClick={() => loadWorks(address!)}
+        <div className="flex items-center gap-3">
+          {authenticated && address && (
+            <div className="rounded-xl border border-surface-border bg-surface-raised px-4 py-2">
+              <span className="font-mono text-xs text-emerald-500">
+                {address.slice(0, 6)}...{address.slice(-4)}
+              </span>
+            </div>
+          )}
+          <Button
+            variant="secondary"
+            size="icon"
+            onClick={() => address && loadWorks(address)}
             disabled={loading}
-            style={{ backgroundColor: '#10b981', color: '#000000', border: 'none', padding: '8px 16px', borderRadius: '12px', cursor: 'pointer', fontWeight: '900', opacity: loading ? 0.6 : 1 }}
           >
-            {loading ? "..." : "↺"}
-          </button>
+            <RefreshCw
+              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+            />
+          </Button>
         </div>
       </div>
 
-      {error && <p style={{ color: '#ef4444', fontSize: '10px', textAlign: 'center', marginBottom: '20px' }}>{error}</p>}
-
-      {!loading && works.length === 0 && !error && (
-        <div style={{ textAlign: 'center', padding: '60px', border: '1px dashed #10b98133', borderRadius: '32px', color: '#10b98166', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase' }}>
-          No hay obras registradas para esta wallet.
+      {error && (
+        <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-center font-mono text-xs text-red-400">
+          {error}
         </div>
       )}
 
-      {/* Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '32px' }}>
-        {works.map((item) => {
-          const isEncrypted = item.metadata?.encryptedAudio?.encrypted ?? false;
-          // ── FIX CRÍTICO: usar ciphertextCid para el audio, no ipfsCid ──
-          const audioCid = item.metadata?.encryptedAudio?.ciphertextCid ?? "";
-          const audioUrl = audioCid ? LighthouseService.gatewayUrl(audioCid) : "";
+      {works.length === 0 && !loading && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col items-center gap-4 py-24"
+        >
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-raised">
+            <Music className="h-7 w-7 text-zinc-600" />
+          </div>
+          <p className="font-mono text-xs uppercase tracking-wider text-zinc-600">
+            No tienes obras registradas
+          </p>
+        </motion.div>
+      )}
 
-          return (
-            <div key={item.tokenId} style={{ backgroundColor: '#111111', border: '1px solid #10b98133', padding: '32px', borderRadius: '32px', display: 'flex', flexDirection: 'column', transition: 'all 0.3s ease' }}>
-
-              {/* Badge NFT + Risk */}
-              <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                <span style={{ fontSize: '9px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '4px 12px', borderRadius: '9999px', backgroundColor: '#10b981', color: '#000000' }}>
-                  NFT #{item.tokenId}
-                </span>
-                <span style={{ fontSize: '9px', fontWeight: '900', textTransform: 'uppercase', color: RISK_COLOR[item.riskLevel] }}>
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {works.map((item, index) => (
+          <motion.div
+            key={item.tokenId}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: index * 0.06 }}
+          >
+            <Card className="group flex h-full flex-col hover:border-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/5">
+              {/* Card header */}
+              <div className="mb-6 flex items-center justify-between">
+                <Badge>NFT #{item.tokenId}</Badge>
+                <Badge variant={RISK_VARIANT[item.riskLevel] ?? "secondary"}>
                   {RISK_LABEL[item.riskLevel]}
-                </span>
+                </Badge>
               </div>
 
-              {/* Título — skeleton mientras carga */}
+              {/* Title & artist */}
               {item.metaLoading ? (
-                <div style={{ marginBottom: '28px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <SkeletonLine width="75%" height={16} />
-                  <SkeletonLine width="45%" height={10} />
+                <div className="space-y-2 mb-6">
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
                 </div>
               ) : (
                 <>
-                  <h3 style={{ fontWeight: 'bold', color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '1rem', marginBottom: '4px', textTransform: 'uppercase', marginTop: 0 }}>
-                    {item.metadata?.title ?? item.metaError ?? "Sin título"}
+                  <h3 className="truncate font-display text-base font-bold uppercase tracking-tight text-white">
+                    {item.metadata?.title || "Sin titulo"}
                   </h3>
-                  <p style={{ fontSize: '10px', color: '#10b981', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '24px', marginTop: 0 }}>
-                    {item.metadata?.artist ?? "—"}
+                  <p className="mt-1 mb-6 font-mono text-[11px] font-semibold uppercase text-emerald-500/70">
+                    {item.metadata?.artist || "Artista"}
                   </p>
                 </>
               )}
 
-              {/* Score + Visibilidad — solo cuando metadata cargó */}
-              <div style={{ marginBottom: '24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div style={{ padding: '12px', backgroundColor: 'rgba(16, 185, 129, 0.03)', borderRadius: '16px', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                  <p style={{ fontSize: '7px', color: '#666', textTransform: 'uppercase', fontWeight: '900', margin: '0 0 4px' }}>Score</p>
-                  <p style={{ fontSize: '10px', color: '#fff', fontWeight: 'bold', margin: 0 }}>{item.authenticityScore}%</p>
+              {/* Stats */}
+              <div className="mb-6 grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-emerald-500/10 bg-emerald-500/[0.03] p-3">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+                    Score
+                  </p>
+                  <p className="mt-1 font-display text-sm font-bold text-white">
+                    {item.authenticityScore}%
+                  </p>
                 </div>
-                <div style={{ padding: '12px', backgroundColor: 'rgba(16, 185, 129, 0.03)', borderRadius: '16px', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                  <p style={{ fontSize: '7px', color: '#666', textTransform: 'uppercase', fontWeight: '900', margin: '0 0 4px' }}>Visibilidad</p>
-                  <p style={{ fontSize: '10px', color: '#10b981', fontWeight: 'bold', textTransform: 'uppercase', margin: 0 }}>
-                    {item.metaLoading ? "—" : isEncrypted ? "Privado" : "Público"}
+                <div className="rounded-xl border border-emerald-500/10 bg-emerald-500/[0.03] p-3">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+                    Visibilidad
+                  </p>
+                  <p className="mt-1 font-display text-sm font-bold text-emerald-500">
+                    {item.metadata?.encryptedAudio.encrypted
+                      ? "Privado"
+                      : "Publico"}
                   </p>
                 </div>
               </div>
 
-              {/* Reproductor — solo cuando metadata cargó */}
-              <div style={{ marginTop: 'auto' }}>
-                {item.metaLoading ? (
-                  <SkeletonLine width="100%" height={40} />
-                ) : isEncrypted ? (
-                  <EncryptedAudioPlayer
-                    cid={audioCid}
-                    ownerAddress={address!}
-                    signMessage={signMessage}
-                  />
-                ) : audioUrl ? (
-                  // FIX: preload="metadata" para que el play no desaparezca
-                  <audio
-                    controls
-                    preload="metadata"
-                    style={{ width: '100%', height: '40px', filter: 'invert(1) brightness(2)' }}
-                    src={audioUrl}
-                  />
-                ) : null}
+              {/* Audio player */}
+              <div className="mt-auto">
+                {item.metadata?.encryptedAudio.encrypted ? (
+                  authenticated && address ? (
+                    <EncryptedAudioPlayer
+                      cid={item.metadata.encryptedAudio.ciphertextCid}
+                      ownerAddress={address}
+                      signMessage={signMessage}
+                    />
+                  ) : (
+                    <Button onClick={() => login()} className="w-full">
+                      <Shield className="h-3.5 w-3.5" />
+                      Desbloquear
+                    </Button>
+                  )
+                ) : (
+                  <a
+                    href={`https://gateway.lighthouse.storage/ipfs/${item.ipfsCid}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group/play flex w-full items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 no-underline transition-all hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:shadow-lg hover:shadow-emerald-500/5"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500 shadow-lg shadow-emerald-500/25 transition-transform group-hover/play:scale-105">
+                      <Headphones className="h-4 w-4 text-black" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-white">Escuchar</p>
+                      <p className="font-mono text-[10px] text-zinc-500">Abrir en IPFS Gateway</p>
+                    </div>
+                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-emerald-500/40 transition-colors group-hover/play:text-emerald-500" />
+                  </a>
+                )}
               </div>
 
+              {/* Blockchain proof link */}
               <a
                 href={`https://sepolia.arbiscan.io/tx/${item.txHash}`}
                 target="_blank"
                 rel="noreferrer"
-                style={{ marginTop: '24px', color: '#333', fontSize: '8px', textDecoration: 'none', textAlign: 'center', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                className="mt-6 flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-600 no-underline transition-colors hover:text-emerald-500"
               >
-                Blockchain Proof ↗
+                Blockchain Proof
+                <ExternalLink className="h-2.5 w-2.5" />
               </a>
-            </div>
-          );
-        })}
+            </Card>
+          </motion.div>
+        ))}
       </div>
     </div>
   );
