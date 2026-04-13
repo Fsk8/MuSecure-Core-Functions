@@ -1,10 +1,12 @@
 /**
  * MuSecure – hooks/useIPFSUpload.ts
+ * Agrega soporte para MusicBrainz verification
  */
 
 import { useState, useCallback, useRef } from "react";
 import { LighthouseService } from "@/services/LighthouseService";
 import type { IPFSUploadResult, MuSecureMetadata, UploadProgress, UploadStage } from "@/types/ipfs";
+import type { CatalogAuthenticityReport } from "@/types/acoustid";
 
 export interface UploadInput {
   audioFile: File;
@@ -16,6 +18,8 @@ export interface UploadInput {
   artist: string;
   description?: string;
   fingerprint: { sha256: string; data: number[]; durationSec: number };
+  // ✨ NUEVO: Pasar el report del catálogo si existe
+  catalogReport?: CatalogAuthenticityReport;
 }
 
 function prog(stage: UploadStage, percent: number, message: string): UploadProgress {
@@ -105,6 +109,22 @@ export function useIPFSUpload() {
           : {}),
       };
 
+      // ✨ NUEVO: Agregar MusicBrainz verification si existe
+      if (input.catalogReport && input.catalogReport.matches.length > 0) {
+        const bestMatch = input.catalogReport.matches[0];
+        if (bestMatch.scorePercent >= 45) { // Solo guardar matches significativos
+          metadata.musicbrainz = {
+            recordingId: bestMatch.recordingId,
+            title: bestMatch.title || input.title,
+            artist: bestMatch.artist || input.artist,
+            releaseTitle: bestMatch.releaseTitle,
+            scorePercent: bestMatch.scorePercent,
+            verifiedAt: new Date().toISOString(),
+            matchSource: "acoustid"
+          };
+        }
+      }
+
       setProgress(prog("uploading-metadata", 84, "Subiendo metadata a IPFS…"));
       const safeTitle = input.title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
       const metaResult = await lh.uploadJSON(metadata, `musecure_${safeTitle}_metadata.json`);
@@ -119,7 +139,7 @@ export function useIPFSUpload() {
         metadata,
       };
 
-      // ── Guardar en localStorage → Dashboard lo lee por wallet ─────────
+      // Guardar en localStorage con info de MB
       lh.saveUploadRecord({
         metadataCid: metaResult.cid,
         audioCid: audioResult.cid,

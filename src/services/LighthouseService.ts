@@ -141,33 +141,43 @@ export class LighthouseService {
    *
    * @returns CID del JSON de metadata
    */
+  // Modifica solo esta función dentro de LighthouseService.ts
   async uploadMetadata(
     title: string,
     artist: string,
     audioCid: string,
     isEncrypted: boolean,
-    mimeType = "audio/mpeg"
+    mimeType: string
   ): Promise<string> {
-    const metadata: NFTMetadata = {
-      name: title,
-      description: "Obra musical protegida por MuSecure — IP registrada en blockchain.",
-      // Placeholder de imagen — se puede actualizar con artwork real
-      image: "ipfs://bafybeibvbfxhsexhqy6mipbqk7qmlolhynxfhqq7c7h4yzb5pcl5u4ixe4",
-      animation_url: `ipfs://${audioCid}`,
-      attributes: [
-        { trait_type: "Artist", value: artist },
-        { trait_type: "Encrypted", value: isEncrypted },
-        { trait_type: "MimeType", value: mimeType },
-        { trait_type: "Platform", value: "MuSecure" },
-      ],
-    };
+    try {
+      const lh = await this.getLh();
+      const apiKey = getApiKey();
 
-    const safeTitle = title.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
-    const result = await this.uploadPublic(
-      new Blob([JSON.stringify(metadata, null, 2)], { type: "application/json" }),
-      `musecure_${safeTitle}_metadata.json`
-    );
-    return result.cid;
+      // Estructura compatible con marketplaces y exploradores
+      const nftMetadata: NFTMetadata = {
+        name: title, // Aquí se reutiliza el título del form
+        description: `Certificado de Autenticidad MuSecure para la obra "${title}" de ${artist}.`,
+        image: "ipfs://QmYwAP...tu_logo_o_cover_aqui", // Podrías pasar un artworkCid si lo tienes
+        animation_url: isEncrypted ? "" : `ipfs://${audioCid}`, // Solo visible si es público
+        attributes: [
+          { trait_type: "Artista", value: artist },
+          { trait_type: "Protección", value: isEncrypted ? "Cifrado" : "Público" },
+          { trait_type: "Tipo de Archivo", value: mimeType }
+        ],
+      };
+
+      const jsonStr = JSON.stringify(nftMetadata);
+      const res = await lh.uploadText(jsonStr, apiKey);
+      
+      // El SDK de Lighthouse a veces devuelve el CID en res.data.Hash o res.Hash
+      const mCid = (res as any)?.data?.Hash || (res as any)?.Hash;
+      if (!mCid) throw new Error("Error al obtener CID de metadata");
+
+      return mCid;
+    } catch (err) {
+      console.error("[Lighthouse] uploadMetadata error:", err);
+      throw err;
+    }
   }
 
   // ── Upload JSON (genérico) ────────────────────────────────────────────────

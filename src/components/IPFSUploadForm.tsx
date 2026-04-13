@@ -1,7 +1,5 @@
 /**
  * MuSecure – IPFSUploadForm
- *
- * Fix s11: usa useWallet() en lugar de signMessage de usePrivy().
  * Flujo: uploadAudio → uploadMetadata (ERC-721 JSON) → RegisterWorkButton con metadataCid.
  */
 
@@ -44,7 +42,6 @@ export function IPFSUploadForm({
   const [stageMsg, setStageMsg] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  // CIDs resultantes
   const [audioCid, setAudioCid] = useState("");
   const [metadataCid, setMetadataCid] = useState("");
 
@@ -57,7 +54,6 @@ export function IPFSUploadForm({
     const lh = LighthouseService.getInstance();
 
     try {
-      // ── Paso 1: subir audio ────────────────────────────────────────────────
       setStage("uploading-audio");
       setStageMsg(encrypt ? "Firmando y encriptando audio..." : "Subiendo audio a IPFS...");
 
@@ -69,8 +65,6 @@ export function IPFSUploadForm({
       );
       setAudioCid(audioResult.cid);
 
-      // ── Paso 2: subir metadata ERC-721 ────────────────────────────────────
-      // El metadataCid es el que va al contrato, NO el audioCid
       setStage("uploading-metadata");
       setStageMsg("Subiendo metadata a IPFS...");
 
@@ -83,7 +77,6 @@ export function IPFSUploadForm({
       );
       setMetadataCid(mCid);
 
-      // Guardar en localStorage para el Dashboard local
       lh.saveUploadRecord({
         metadataCid: mCid,
         audioCid: audioResult.cid,
@@ -103,7 +96,6 @@ export function IPFSUploadForm({
     }
   };
 
-  // Post-upload: mostrar botón de registro on-chain
   if (isDone && metadataCid) {
     return (
       <motion.div
@@ -121,12 +113,13 @@ export function IPFSUploadForm({
           <p className="font-mono text-[10px] text-emerald-500">
             Certificado: {metadataCid.slice(0, 12)}...
           </p>
-          {/* RegisterWorkButton recibe el metadataCid (JSON ERC-721), NO el audioCid */}
+          
           <RegisterWorkButton
             fingerprintHash={`0x${fingerprint.sha256}`}
             ipfsCid={metadataCid}
             authenticityScore={authenticityScore}
             soulbound={isSoulbound}
+            title={title} // Pasamos el título para mostrarlo al finalizar el registro
           />
         </Card>
       </motion.div>
@@ -167,7 +160,6 @@ export function IPFSUploadForm({
                 ? "border-violet/30 bg-violet-glow"
                 : "border-surface-border bg-surface-overlay"
             }`}
-            aria-pressed={encrypt}
           >
             {encrypt
               ? <Lock className="h-4 w-4 text-violet" />
@@ -178,7 +170,6 @@ export function IPFSUploadForm({
               </p>
               <p className="text-[10px] text-zinc-600">Privacidad de Lighthouse</p>
             </div>
-            <div className={`ml-auto h-3 w-3 rounded-full ${encrypt ? "bg-violet" : "bg-zinc-700"}`} />
           </button>
 
           <button
@@ -190,7 +181,6 @@ export function IPFSUploadForm({
                 ? "border-emerald-500/30 bg-emerald-500/5"
                 : "border-surface-border bg-surface-overlay"
             }`}
-            aria-pressed={isSoulbound}
           >
             {isSoulbound
               ? <Link2 className="h-4 w-4 text-emerald-500" />
@@ -201,12 +191,10 @@ export function IPFSUploadForm({
               </p>
               <p className="text-[10px] text-zinc-600">Propiedad del NFT</p>
             </div>
-            <div className={`ml-auto h-3 w-3 rounded-full ${isSoulbound ? "bg-emerald-500" : "bg-zinc-700"}`} />
           </button>
         </div>
       </div>
 
-      {/* Progress */}
       <AnimatePresence>
         {isUploading && (
           <motion.div

@@ -19,12 +19,9 @@ export interface MuSecureMetadata {
 
   encryptedAudio: {
     ciphertextCid: string;
-    /** true = encriptado con Lit, false = público */
     encrypted: boolean;
     dataToEncryptHash: string;
-    /** null si el audio es público */
     accessConditions: string | null;
-    /** null si el audio es público */
     litNetwork: string | null;
     originalFileName: string;
     mimeType: string;
@@ -34,6 +31,17 @@ export interface MuSecureMetadata {
   artwork?: {
     cid: string;
     mimeType: string;
+  };
+
+  // ✨ NUEVO: MusicBrainz verification (OPCIONAL - no rompe nada)
+  musicbrainz?: {
+    recordingId: string;
+    title: string;
+    artist: string;
+    releaseTitle?: string;
+    scorePercent: number;
+    verifiedAt: string;
+    matchSource: "acoustid" | "musicbrainz";
   };
 }
 

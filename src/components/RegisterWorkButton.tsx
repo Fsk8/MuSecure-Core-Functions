@@ -1,8 +1,7 @@
 /**
  * MuSecure – RegisterWorkButton
- *
- * Recibe metadataCid (CID del JSON ERC-721), NO el CID del audio.
- * Mantiene todo el estilo shadcn/ui + motion/react.
+ * Recibe metadataCid (CID del JSON ERC-721).
+ * Muestra el título de la obra al finalizar con éxito.
  */
 
 import { useRegisterWork } from "@/hooks/useRegisterWork";
@@ -17,6 +16,7 @@ interface Props {
   ipfsCid: string;
   authenticityScore: number;
   soulbound: boolean;
+  title?: string; // Prop añadida para mostrar el nombre real en el éxito
   onSuccess?: (txHash: string, tokenId: number) => void;
 }
 
@@ -34,71 +34,82 @@ export function RegisterWorkButton({
   ipfsCid,
   authenticityScore,
   soulbound,
+  title, // Recibimos el título aquí
   onSuccess,
 }: Props) {
   const { registerWork, state, reset } = useRegisterWork();
   const isLoading = !["idle", "done", "error"].includes(state.step);
-  const riskLevel = authenticityScore >= 80 ? 2 : authenticityScore >= 45 ? 1 : 0;
-  const risk = RISK_CONFIG[riskLevel];
-  const isBlocked = riskLevel === 2;
+
+  const risk = RISK_CONFIG[authenticityScore] || RISK_CONFIG[0];
+  const isBlocked = authenticityScore >= 2;
 
   const handleRegister = async () => {
     try {
-      const result = await registerWork({
+      const res = await registerWork({
         fingerprintHash,
-        ipfsCid,        // metadataCid — CID del JSON ERC-721
+        ipfsCid,
         authenticityScore,
         soulbound,
       });
-      onSuccess?.(result.txHash, result.tokenId);
+      if (onSuccess) onSuccess(res.txHash, res.tokenId);
     } catch (e) {
-      console.error("[RegisterWork] Failed:", e);
+      // Error manejado por el hook
     }
   };
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full">
       <AnimatePresence mode="wait">
         {state.step === "done" ? (
           <motion.div
             key="success"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="flex flex-col items-center gap-4 rounded-3xl border border-emerald-500/20 bg-emerald-500/5 p-6 text-center"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center gap-4 rounded-3xl border border-emerald-500/20 bg-emerald-500/5 p-8 text-center"
           >
-            <CheckCircle2 className="h-8 w-8 text-emerald-500" />
-            <div>
-              <p className="font-mono text-[11px] font-bold uppercase tracking-wider text-emerald-500">
-                Certificado de Obra Registrado
+            <CheckCircle2 className="h-12 w-12 text-emerald-500" />
+            <div className="space-y-1">
+              {/* Muestra el título si existe, si no, el ID por defecto */}
+              <h3 className="font-display text-xl font-bold text-white">
+                {title || `Obra #${state.tokenId}`}
+              </h3>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                Certificado Registrado (ID: {state.tokenId})
               </p>
-              {state.tokenId !== undefined && (
-                <p className="mt-1 font-display text-lg font-bold text-white">
-                  NFT #{state.tokenId}
-                </p>
-              )}
             </div>
-            {state.txHash && (
-              <a
-                href={`https://sepolia.arbiscan.io/tx/${state.txHash}`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-500 no-underline transition-colors hover:text-emerald-500"
+
+            <div className="flex flex-col gap-2 w-full pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10"
+                onClick={() => window.open(`https://sepolia.arbiscan.io/tx/${state.txHash}`, "_blank")}
               >
+                <ExternalLink className="h-3 w-3" />
                 Ver en Arbiscan
-                <ExternalLink className="h-2.5 w-2.5" />
-              </a>
-            )}
-            <Button variant="outline" size="sm" onClick={reset}>
-              Proteger otro track
-            </Button>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={reset} className="text-zinc-500 hover:text-white">
+                Registrar otra obra
+              </Button>
+            </div>
           </motion.div>
         ) : (
-          <motion.div key="action" className="space-y-3">
-            {/* Risk badge */}
-            <div className="flex items-center justify-between px-1">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">
-                Certificado de Obra
-              </span>
+          <motion.div
+            key="action"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-6"
+          >
+            <div className="flex items-center justify-between rounded-2xl border border-surface-border bg-surface-overlay p-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-full bg-zinc-800 p-2 text-zinc-400">
+                  <Shield className="h-4 w-4" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Estado de Análisis</p>
+                  <p className="text-sm font-medium text-white">Verificación de Huella</p>
+                </div>
+              </div>
               <Badge variant={risk.variant}>{risk.label}</Badge>
             </div>
 
