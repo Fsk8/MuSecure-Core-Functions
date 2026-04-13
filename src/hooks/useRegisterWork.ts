@@ -53,15 +53,15 @@ export function useRegisterWork() {
   }): Promise<RegisterResult> => {
     try {
       const registryAddress = import.meta.env.VITE_REGISTRY_ADDRESS;
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://tu-backend.vercel.app"; // Asegúrate de usar HTTPS en Vercel
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://tu-backend.vercel.app";
 
       if (!window.ethereum) throw new Error("MetaMask no detectado");
 
       const provider = new ethers.BrowserProvider(window.ethereum as any);
       const network = await provider.getNetwork();
-      const currentChainId = network.chainId.toString();
+      const currentChainId = network.chainId; // Obtenemos el chainId numérico
 
-      if (currentChainId !== "421614") {
+      if (currentChainId.toString() !== "421614") {
         throw new Error(`Cambia a Arbitrum Sepolia (421614) en MetaMask.`);
       }
 
@@ -77,7 +77,7 @@ export function useRegisterWork() {
       const exists = await registry.workExists(cleanHash);
       if (exists) throw new Error("Esta huella ya está registrada.");
 
-      // 2. Firma del Backend
+      // 2. Firma del Backend (ACTUALIZADO: Mandamos todos los parámetros del contrato)
       set("requesting-signature");
       const sigRes = await fetch(`${backendUrl}/api/sign-music`, {
         method: "POST",
@@ -85,21 +85,21 @@ export function useRegisterWork() {
         body: JSON.stringify({
           fingerprintHash: cleanHash,
           score: input.authenticityScore,
+          ipfsCid: input.ipfsCid,
+          soulbound: input.soulbound,
           userAddress: userAddress,
+          chainId: Number(currentChainId),
+          contractAddress: registryAddress
         }),
       });
 
       const sigData = await sigRes.json();
       if (!sigData.success) throw new Error(sigData.error || "Falla en firma del backend");
 
-      // --- CORRECCIÓN DE GAS EMPIEZA AQUÍ ---
+      // 3. Transacción
       set("waiting-wallet");
       
-      // Obtenemos los fees actuales de la red
       const feeData = await provider.getFeeData();
-      
-      // Multiplicamos por 1.3 (30% de margen) para que el bloque no nos rechace
-      // Usamos BigInt para evitar errores de precisión con ethers v6
       const maxFeePerGas = (feeData.maxFeePerGas! * 130n) / 100n;
       const maxPriorityFeePerGas = (feeData.maxPriorityFeePerGas! * 130n) / 100n;
 
@@ -112,11 +112,9 @@ export function useRegisterWork() {
         {
           maxFeePerGas,
           maxPriorityFeePerGas,
-          // Un gas limit manual alto previene fallos de estimación en L2
           gasLimit: 600000 
         }
       );
-      // --- CORRECCIÓN DE GAS TERMINA AQUÍ ---
 
       // 4. Confirmación
       set("confirming", { txHash: tx.hash });
@@ -137,7 +135,6 @@ export function useRegisterWork() {
 
     } catch (err: any) {
       console.error("🔴 Error MuSecure:", err);
-      // Intentamos capturar el mensaje de error de la transacción si existe
       const msg = err.error?.message || err.reason || err.message || "Error desconocido";
       set("error", { error: msg });
       throw err;

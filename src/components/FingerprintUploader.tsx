@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { usePrivy } from "@privy-io/react-auth";
+// IMPORTANTE: Asegúrate de que la ruta a tu hook useWallet sea correcta.
+import { useWallet } from "@/hooks/useWallet"; 
 import { AudioFingerprintService } from "@/services/AudioFingerprintService";
 import { runCatalogAuthenticityCheck } from "@/services/runCatalogCheck";
-import { LighthouseService } from "@/services/LighthouseService";
-import { RegisterWorkButton } from "@/components/RegisterWorkButton";
+import { IPFSUploadForm } from "@/components/IPFSUploadForm"; // Se usa el nuevo componente
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,10 @@ function StepIndicator({
 }
 
 export const FingerprintUploader = () => {
-  const { user, logout, authenticated, ready, signMessage } = usePrivy();
+  // ✅ CORRECCIÓN: Se quitó signMessage de usePrivy
+  const { user, logout, authenticated, ready } = usePrivy();
+  // ✅ CORRECCIÓN: Se agregó el hook useWallet
+  const { address } = useWallet(); 
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
@@ -76,7 +80,6 @@ export const FingerprintUploader = () => {
   const [fpResult, setFpResult] = useState<FingerprintResult | null>(null);
   const [catalogReport, setCatalogReport] =
     useState<CatalogAuthenticityReport | null>(null);
-  const [ipfsCid, setIpfsCid] = useState("");
 
   useEffect(() => {
     if (!file) {
@@ -119,30 +122,6 @@ export const FingerprintUploader = () => {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Error desconocido";
       setStatus(`Error: ${msg}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleIPFS = async () => {
-    try {
-      setLoading(true);
-      setStatus("Subiendo a IPFS...");
-      const address = user?.wallet?.address;
-      if (!address) throw new Error("No hay wallet conectada");
-
-      const result = await LighthouseService.getInstance().uploadAudio(
-        file!,
-        address,
-        isEncrypted,
-        isEncrypted ? async (msg: string) => await signMessage(msg) : undefined
-      );
-      setIpfsCid(result.cid);
-      setCurrentStep(2);
-      setStatus("Subida a IPFS completada");
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Error desconocido";
-      setStatus(`Error IPFS: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -430,57 +409,25 @@ export const FingerprintUploader = () => {
               </Button>
             </div>
 
-            {/* Step 2: Upload to IPFS */}
-            <Button
-              onClick={handleIPFS}
-              disabled={loading || currentStep !== 1 || isHighRisk}
-              variant={
-                currentStep === 1 && !isHighRisk ? "default" : "secondary"
-              }
-              className="w-full"
-              size="lg"
-            >
-              {loading && currentStep === 1 ? (
-                <>
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{
-                      duration: 1,
-                      repeat: Infinity,
-                      ease: "linear",
-                    }}
-                  >
-                    <Upload className="h-4 w-4" />
-                  </motion.div>
-                  Subiendo a IPFS...
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4" />
-                  Cifrar y Subir
-                </>
-              )}
-            </Button>
-
-            {/* Step 3: Register on-chain */}
-            <AnimatePresence>
-              {currentStep === 2 && fpResult && (
+            {/* ✅ CORRECCIÓN: Se reemplazó el botón manual y RegisterWorkButton por IPFSUploadForm */}
+            {currentStep === 1 && fpResult && !isHighRisk && (
+              <AnimatePresence>
                 <motion.div
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                 >
-                  <RegisterWorkButton
-                    fingerprintHash={fpResult.sha256}
-                    ipfsCid={ipfsCid}
+                  <IPFSUploadForm
+                    fingerprint={fpResult}
+                    audioFile={file!}
+                    ownerAddress={address ?? ""}
                     authenticityScore={catalogScore}
-                    soulbound={isSoulbound}
-                    onSuccess={() => setCurrentStep(3)}
+                    // onUploadSuccess={() => setCurrentStep(2)} // ← Ajusta según cómo IPFSUploadForm maneje el éxito si es necesario
                   />
                 </motion.div>
-              )}
-            </AnimatePresence>
+              </AnimatePresence>
+            )}
 
-            {/* Success state */}
+            {/* Success state (Dejé el step 3 en caso de que lo necesites después del IPFSUploadForm) */}
             <AnimatePresence>
               {currentStep === 3 && (
                 <motion.div

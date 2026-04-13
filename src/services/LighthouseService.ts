@@ -1,9 +1,8 @@
 /**
  * MuSecure – services/LighthouseService.ts
- * Implementación optimizada para despliegue en Vercel y uso compartido.
+ *
+ * Usa "as any" para el SDK de Lighthouse — evita errores de tipos TS.
  */
-
-import lighthouse from "@lighthouse-web3/sdk";
 
 function getApiKey(): string {
   const key = import.meta.env.VITE_LIGHTHOUSE_API_KEY as string;
@@ -17,7 +16,6 @@ export interface UploadResult {
   encrypted: boolean;
 }
 
-/** Registro que se persiste en localStorage por sesión/wallet */
 export interface LocalUploadRecord {
   metadataCid: string;
   audioCid: string;
@@ -27,6 +25,15 @@ export interface LocalUploadRecord {
   encrypted: boolean;
   uploadedAt: number;
   ownerAddress: string;
+}
+
+/** Metadata ERC-721 estándar — este CID va al contrato para el mint */
+export interface NFTMetadata {
+  name: string;
+  description: string;
+  image: string;
+  animation_url: string;
+  attributes: Array<{ trait_type: string; value: string | boolean }>;
 }
 
 const LS_KEY = "musecure:uploads";
@@ -42,7 +49,30 @@ export class LighthouseService {
     return LighthouseService.instance;
   }
 
-  // ── Upload (Audio & General) ──────────────────────────────────────────────
+  // ── Helpers privados ──────────────────────────────────────────────────────
+
+  private async getLh(): Promise<any> {
+    return ((await import("@lighthouse-web3/sdk")) as any).default;
+  }
+
+  private static extractCid(data: unknown): string {
+    const tryExtract = (v: unknown): string | null => {
+      if (!v) return null;
+      if (Array.isArray(v)) return tryExtract(v[0]);
+      if (typeof v === "object") {
+        const obj = v as any;
+        if (obj.Hash) return obj.Hash;
+        if (obj.cid) return obj.cid;
+        if (obj.data) return tryExtract(obj.data);
+      }
+      return null;
+    };
+    const cid = tryExtract(data);
+    if (!cid) throw new Error("Lighthouse no devolvió un CID válido.");
+    return cid;
+  }
+
+  // ── Upload Audio ──────────────────────────────────────────────────────────
 
   async uploadAudio(
     file: File,
@@ -51,75 +81,103 @@ export class LighthouseService {
     signMessage?: (msg: string) => Promise<string>,
     onProgress?: (pct: number) => void
   ): Promise<UploadResult> {
+    const lh = await this.getLh();
     const apiKey = getApiKey();
 
     if (encrypt) {
       if (typeof signMessage !== "function") {
-        throw new Error("Se requiere firmar el mensaje para encriptar la obra.");
+        throw new Error("Se requiere firma para encriptar.");
       }
-
-      const authMessage = await lighthouse.getAuthMessage(ownerAddress);
-      const message = authMessage?.data?.message;
-      
-      if (!message) {
-        throw new Error("No se pudo obtener el mensaje de autenticación de Lighthouse.");
-      }
-      
+      const authRes = await lh.getAuthMessage(ownerAddress);
+      const message: string | undefined = (authRes as any)?.data?.message;
+      if (!message) throw new Error("No se pudo obtener mensaje de autenticación de Lighthouse.");
       const signature = await signMessage(message);
 
       let response: any;
       try {
-        response = await lighthouse.uploadEncrypted(
-          [file],
-          apiKey,
-          ownerAddress,
-          signature
-        );
+        response = await lh.uploadEncrypted([file], apiKey, ownerAddress, signature);
       } catch (e) {
-        throw new Error(`Error en carga encriptada: ${(e as Error)?.message}`);
+        throw new Error(`Error encriptando: ${(e as Error)?.message}`);
       }
-
-      const cid = LighthouseService.extractCid(response.data || response);
+      const cid = LighthouseService.extractCid(response?.data ?? response);
       return { cid, url: LighthouseService.gatewayUrl(cid), encrypted: true };
     } else {
       return this.uploadPublic(file, file.name, onProgress);
     }
   }
 
+  // ── Upload Public (alias simplificado) ───────────────────────────────────
+
   async uploadPublic(
     file: File | Blob,
     fileName: string,
     onProgress?: (pct: number) => void
   ): Promise<UploadResult> {
+    const lh = await this.getLh();
     const apiKey = getApiKey();
     const blob = file instanceof File ? file : new File([file], fileName, { type: file.type });
 
     let response: any;
     try {
-      response = await lighthouse.upload(
-        [blob],
-        apiKey,
-        {
-          cidVersion: 1,
-          onProgress: onProgress
-            ? (data: { progress: number }) => onProgress(data.progress)
-            : undefined,
-        }
-      );
+      response = await lh.upload([blob], apiKey, {
+        cidVersion: 1,
+        onProgress: onProgress
+          ? (data: { progress: number }) => onProgress(data.progress)
+          : undefined,
+      });
     } catch (e) {
       throw new Error(`Error en carga pública: ${(e as Error)?.message}`);
     }
-
-    const cid = LighthouseService.extractCid(response.data || response);
+    const cid = LighthouseService.extractCid(response?.data ?? response);
     return { cid, url: LighthouseService.gatewayUrl(cid), encrypted: false };
   }
+
+  // ── Upload Metadata ERC-721 ───────────────────────────────────────────────
+  /**
+   * Genera y sube a IPFS el JSON de metadata NFT estándar.
+   *
+   * IMPORTANTE: El CID devuelto es el que va al contrato inteligente (registerWork),
+   * NO el CID del audio. El audio se referencia dentro del JSON como animation_url.
+   *
+   * @returns CID del JSON de metadata
+   */
+  async uploadMetadata(
+    title: string,
+    artist: string,
+    audioCid: string,
+    isEncrypted: boolean,
+    mimeType = "audio/mpeg"
+  ): Promise<string> {
+    const metadata: NFTMetadata = {
+      name: title,
+      description: "Obra musical protegida por MuSecure — IP registrada en blockchain.",
+      // Placeholder de imagen — se puede actualizar con artwork real
+      image: "ipfs://bafybeibvbfxhsexhqy6mipbqk7qmlolhynxfhqq7c7h4yzb5pcl5u4ixe4",
+      animation_url: `ipfs://${audioCid}`,
+      attributes: [
+        { trait_type: "Artist", value: artist },
+        { trait_type: "Encrypted", value: isEncrypted },
+        { trait_type: "MimeType", value: mimeType },
+        { trait_type: "Platform", value: "MuSecure" },
+      ],
+    };
+
+    const safeTitle = title.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
+    const result = await this.uploadPublic(
+      new Blob([JSON.stringify(metadata, null, 2)], { type: "application/json" }),
+      `musecure_${safeTitle}_metadata.json`
+    );
+    return result.cid;
+  }
+
+  // ── Upload JSON (genérico) ────────────────────────────────────────────────
 
   async uploadJSON(data: unknown, fileName: string): Promise<UploadResult> {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     return this.uploadPublic(blob, fileName);
   }
 
-  // ── Gestión de Registros (Local & Global) ────────────────────────────────
+  // ── Local Storage ─────────────────────────────────────────────────────────
 
   saveUploadRecord(record: LocalUploadRecord): void {
     const all = this.getAllRecords();
@@ -128,7 +186,7 @@ export class LighthouseService {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(deduped));
     } catch {
-      console.warn("LocalStorage lleno, el registro no se guardó localmente.");
+      console.warn("LocalStorage lleno — registro no guardado.");
     }
   }
 
@@ -147,51 +205,38 @@ export class LighthouseService {
     }
   }
 
-  /** * Retorna la lista global de archivos vinculados a la API Key.
-   * Ideal para el componente "Explorer".
-   */
   async listUploads(lastKey: string | null = null): Promise<any[]> {
     try {
+      const lh = await this.getLh();
       const apiKey = getApiKey();
-      const res = await lighthouse.getUploads(apiKey, lastKey as any);
-      return (res as any)?.data?.fileList || [];
-    } catch (error) {
-      console.error("Error al listar archivos de la API Key:", error);
+      const res = await lh.getUploads(apiKey, lastKey as any);
+      return (res as any)?.data?.fileList ?? [];
+    } catch (err) {
+      console.error("[Lighthouse] listUploads error:", err);
       return [];
     }
   }
 
-  // ── Helpers de Infraestructura ───────────────────────────────────────────
+  // ── URL Helpers ───────────────────────────────────────────────────────────
 
-  /** Genera la URL para acceder al archivo vía IPFS Gateway */
+  /** URL del gateway para metadata JSON y uso interno */
   static gatewayUrl(cid: string): string {
-    // Detectamos si estamos en desarrollo para usar el proxy de Vite
+    if (!cid) return "";
     const isDev = import.meta.env.DEV;
-    if (isDev) {
-      return `/ipfs-proxy/ipfs/${cid}`;
-    }
-    // En producción (Vercel) usamos el gateway oficial
+    if (isDev) return `/ipfs-proxy/ipfs/${cid}`;
     return `https://gateway.lighthouse.storage/ipfs/${cid}`;
   }
 
-  /** Extrae el CID de manera robusta según la respuesta de la API */
-  private static extractCid(data: unknown): string {
-    const tryExtract = (v: unknown): string | null => {
-      if (!v) return null;
-      if (Array.isArray(v)) return tryExtract(v[0]);
-      if (typeof v === "object") {
-        const obj = v as any;
-        // Buscamos 'Hash' (común en Lighthouse) o 'cid'
-        if (obj.Hash) return obj.Hash;
-        if (obj.cid) return obj.cid;
-        if (obj.data) return tryExtract(obj.data);
-      }
-      return null;
-    };
-
-    const cid = tryExtract(data);
-    if (cid) return cid;
-
-    throw new Error("Lighthouse no devolvió un CID válido en la respuesta.");
+  /**
+   * URL para reproducción de audio en el navegador.
+   * ?filename=audio.mp3 evita que el gateway fuerce descarga.
+   */
+  static audioUrl(cid: string, mimeType = "audio/mpeg"): string {
+    if (!cid) return "";
+    const ext = mimeType.includes("ogg") ? "ogg"
+      : mimeType.includes("wav") ? "wav"
+      : mimeType.includes("aac") ? "aac"
+      : "mp3";
+    return `${LighthouseService.gatewayUrl(cid)}?filename=audio.${ext}`;
   }
 }
