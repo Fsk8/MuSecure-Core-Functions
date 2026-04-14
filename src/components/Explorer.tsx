@@ -1,5 +1,5 @@
 /**
- * MuSecure – Explorer (Versión FINAL CON SOPORTE PARA VERCEL)
+ * MuSecure – Explorer (Versión FINAL CORREGIDA - VERCEL)
  * - Filtra solo obras públicas con metadata (para demo limpia)
  * - Filtra solo archivos de audio válidos (por extensión)
  * - Mantiene obras encriptadas (sin extensión)
@@ -9,7 +9,7 @@
  * - PRIORIZA la versión con releaseId (portada) sobre las antiguas
  * - PRIORIZA la versión más reciente si todo lo demás es igual
  * - Badges "MB Verified" vs "Original"
- * - Muestra portada usando proxy de Vercel en producción
+ * - Muestra portada con fallback elegante (placeholder si no hay imagen)
  */
 
 import { useEffect, useState } from "react";
@@ -40,14 +40,12 @@ interface MBInfo {
 function getCoverArtUrl(releaseId: string | null | undefined): string | null {
   if (!releaseId) return null;
   
-  // En desarrollo (local): usar proxy de Vite o Weserv
+  // En desarrollo (local): usar Weserv
   if (import.meta.env.DEV) {
-    // Weserv funciona bien en local sin configuración adicional
-    return `https://images.weserv.nl/?url=${encodeURIComponent(`https://coverartarchive.org/release/${releaseId}/front-500`)}&w=400&h=400&fit=contain&output=jpeg&q=85`;
+    return `https://images.weserv.nl/?url=${encodeURIComponent(`https://coverartarchive.org/release/${releaseId}/front-500`)}&w=400&h=400&fit=contain&output=jpeg&default=404`;
   }
   
   // En producción (Vercel): usar el rewrite configurado en vercel.json
-  // Esto evita CORS porque la petición se hace al mismo origen
   return `/api/cover/${releaseId}`;
 }
 
@@ -91,35 +89,31 @@ function CardSkeleton() {
   );
 }
 
-// ✨ Componente de imagen con fallback
+// ✨ Componente de imagen con fallback inmediato
 function CoverImage({ releaseId, title, onFinalError }: { 
   releaseId: string; 
   title: string;
   onFinalError: () => void;
 }) {
   const coverUrl = getCoverArtUrl(releaseId);
-  const [errorCount, setErrorCount] = useState(0);
+  const [hasError, setHasError] = useState(false);
   
-  if (!coverUrl) {
+  if (!coverUrl || hasError) {
     onFinalError();
     return null;
   }
   
-  const handleError = () => {
-    setErrorCount(prev => prev + 1);
-    if (errorCount >= 2) {
-      console.log(`❌ Imagen falló después de ${errorCount} intentos para "${title}"`);
-      onFinalError();
-    }
-  };
-  
   return (
-    <div className="flex items-center justify-center p-4 bg-black/20 relative">
+    <div className="flex items-center justify-center p-4 bg-black/20">
       <img
         src={coverUrl}
         alt={title}
         className="h-48 w-full object-contain"
-        onError={handleError}
+        onError={() => {
+          console.log(`❌ Imagen no disponible para: ${title}`);
+          setHasError(true);
+          onFinalError();
+        }}
         loading="lazy"
         crossOrigin="anonymous"
       />
@@ -457,7 +451,7 @@ export const Explorer = () => {
                 )}
               </div>
 
-              {/* ✨ PORTADA CON SOPORTE PARA VERCEL */}
+              {/* ✨ PORTADA CON FALLBACK ELEGANTE */}
               {work.isVerified ? (
                 <div className="mb-4 overflow-hidden rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-blue-600/5">
                   {work.mbInfo?.releaseId && !hasImageError ? (
