@@ -1,7 +1,8 @@
 /**
- * MuSecure – Explorer (Versión CORREGIDA)
- * - Filtra JSONs por MIME type y extensión, no solo por nombre
- * - Detecta archivos "blob" y "text" que Lighthouse usa para JSONs
+ * MuSecure – Explorer (Versión FINAL - Con deduplicación)
+ * - Deduplica audios por CID
+ * - Prioriza entradas con metadata vinculada
+ * - Filtra JSONs por MIME type y extensión
  */
 
 import { useEffect, useState } from "react";
@@ -70,25 +71,21 @@ export const Explorer = () => {
 
         console.log('═══════════════════════════════════════');
         console.log(`📦 TOTAL ARCHIVOS: ${files.length}`);
-        console.log('═══════════════════════════════════════');
 
-        // Separar audios y JSONs de metadata
+        // Separar audios y JSONs
         const audioFiles = files.filter((f: any) => {
           const mimeType = f.mimeType?.toLowerCase() || '';
           const fileName = f.fileName.toLowerCase();
           
-          // Excluir JSONs
           if (fileName.endsWith('.json')) return false;
           if (mimeType === 'application/json') return false;
           if (fileName === 'blob' || fileName === 'text') {
-            // Verificar si es JSON por el CID (los CIDs de metadata empiezan con 'bafkrei')
             if (f.cid?.startsWith('bafkrei')) return false;
           }
           
           return true;
         });
 
-        // ✨ CORRECCIÓN: Buscar JSONs por MIME type, extensión o nombre común
         const metadataJsons = files.filter((f: any) => {
           const fileName = f.fileName.toLowerCase();
           const mimeType = f.mimeType?.toLowerCase() || '';
@@ -102,14 +99,10 @@ export const Explorer = () => {
           );
         });
 
-        console.log(`🎵 AUDIOS: ${audioFiles.length}`);
+        console.log(`🎵 AUDIOS (antes de deduplicar): ${audioFiles.length}`);
         console.log(`📄 METADATA JSONs: ${metadataJsons.length}`);
-        metadataJsons.slice(0, 5).forEach((j: any) => {
-          console.log(`   📋 ${j.fileName} (${j.mimeType})`);
-          console.log(`      CID: ${j.cid}`);
-        });
 
-        // Fetch de todos los JSONs en paralelo
+        // Fetch de todos los JSONs
         const metadataResults = await Promise.allSettled(
           metadataJsons.map(async (f: any) => {
             const url = LighthouseService.gatewayUrl(f.cid);
@@ -125,21 +118,42 @@ export const Explorer = () => {
         
         for (const r of metadataResults) {
           if (r.status === "fulfilled") {
-            const { fileName, json } = r.value;
+            const { json } = r.value;
             const animUrl: string = json.animation_url ?? "";
             const audioCidFromJson = animUrl.replace("ipfs://", "").trim();
             
             if (audioCidFromJson) {
               metadataByAudioCid.set(audioCidFromJson, json);
-              console.log(`   ✅ ${fileName} → audioCid: ${audioCidFromJson.slice(0, 20)}...`);
             }
           }
         }
 
         console.log(`📋 Mapa final: ${metadataByAudioCid.size} metadatos vinculados`);
 
+        // ✨ DEDUPLICAR AUDIOS POR CID
+        const audioMap = new Map<string, any>();
+        for (const audio of audioFiles) {
+          const existing = audioMap.get(audio.cid);
+          
+          // Si no existe, o si la nueva entrada tiene mejor nombre (no es blob/text)
+          if (!existing) {
+            audioMap.set(audio.cid, audio);
+          } else {
+            // Preferir entradas con nombres descriptivos sobre "blob" o "text"
+            const isExistingGeneric = existing.fileName === 'blob' || existing.fileName === 'text';
+            const isNewGeneric = audio.fileName === 'blob' || audio.fileName === 'text';
+            
+            if (isExistingGeneric && !isNewGeneric) {
+              audioMap.set(audio.cid, audio);
+            }
+          }
+        }
+        
+        const dedupedAudioFiles = Array.from(audioMap.values());
+        console.log(`🎵 AUDIOS (deduplicados): ${dedupedAudioFiles.length}`);
+
         // Construir WorkCards
-        const cards: WorkCard[] = audioFiles.map((audio: any) => {
+        const cards: WorkCard[] = dedupedAudioFiles.map((audio: any) => {
           const meta = metadataByAudioCid.get(audio.cid);
 
           if (!meta) {
@@ -169,7 +183,7 @@ export const Explorer = () => {
                 ? JSON.parse(mbAttr.value)
                 : mbAttr.value;
             } catch {
-              // Ignorar error de parseo
+              // Ignorar error
             }
           }
 
