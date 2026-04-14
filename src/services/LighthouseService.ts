@@ -4,6 +4,7 @@
  * Usa "as any" para el SDK de Lighthouse — evita errores de tipos TS.
  * CORREGIDO: uploadMetadata ahora usa upload() en lugar de uploadText()
  * para que los metadatos sean accesibles públicamente en IPFS.
+ * MEJORADO: Sube metadatos con nombre descriptivo y tipo MIME correcto.
  */
 
 function getApiKey(): string {
@@ -141,8 +142,7 @@ export class LighthouseService {
    * IMPORTANTE: El CID devuelto es el que va al contrato inteligente (registerWork),
    * NO el CID del audio. El audio se referencia dentro del JSON como animation_url.
    *
-   * ✨ CORREGIDO: Ahora usa upload() en lugar de uploadText() para que los metadatos
-   * sean accesibles públicamente en IPFS.
+   * ✨ MEJORADO: Usa un nombre de archivo descriptivo para que sea fácil de identificar.
    *
    * @returns CID del JSON de metadata
    */
@@ -181,14 +181,14 @@ export class LighthouseService {
         attributes,
       };
 
-      // ✨ CORRECCIÓN: Usar upload() en lugar de uploadText()
-      // uploadText() sube como texto plano que a veces no es accesible públicamente
-      // upload() con Blob asegura que el archivo sea tratado como un archivo normal
       const jsonStr = JSON.stringify(nftMetadata);
       const blob = new Blob([jsonStr], { type: "application/json" });
-      const fileName = `metadata_${Date.now()}_${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
       
-      console.log('📤 Subiendo metadata pública:', { title, size: jsonStr.length });
+      // ✨ MEJORA: Nombre de archivo descriptivo
+      const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const fileName = `metadata_${Date.now()}_${safeTitle}.json`;
+      
+      console.log('📤 Subiendo metadata pública:', { title, fileName, size: jsonStr.length });
       
       const response = await lh.upload([blob], apiKey, {
         cidVersion: 1,
@@ -262,8 +262,6 @@ export class LighthouseService {
   /** URL del gateway para metadata JSON y uso interno */
   static gatewayUrl(cid: string): string {
     if (!cid) return "";
-    const isDev = import.meta.env.DEV;
-    if (isDev) return `/ipfs-proxy/ipfs/${cid}`;
     return `https://gateway.lighthouse.storage/ipfs/${cid}`;
   }
 
@@ -277,6 +275,6 @@ export class LighthouseService {
       : mimeType.includes("wav") ? "wav"
       : mimeType.includes("aac") ? "aac"
       : "mp3";
-    return `${LighthouseService.gatewayUrl(cid)}?filename=audio.${ext}`;
+    return `https://gateway.lighthouse.storage/ipfs/${cid}?filename=audio.${ext}`;
   }
 }

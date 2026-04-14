@@ -1,9 +1,13 @@
 /**
  * MuSecure – IPFSUploadForm
- * Flujo: uploadAudio → uploadMetadata (ERC-721 JSON) → RegisterWorkButton con metadataCid.
- * 
- * MODIFICADO PARA DEMO: Permite subir a IPFS obras con match de MB,
- * pero muestra advertencia y bloquea el registro en blockchain.
+ *
+ * Si hay match de MB → autocompletar título/artista y bloquear inputs
+ * Si no → inputs editables normalmente
+ *
+ * NO renombramos el audio con metadataCid__ porque:
+ * - El JSON ya contiene animation_url: ipfs://audioCid
+ * - El Explorer cruza por ese campo directamente
+ * - Renombrar añade complejidad sin beneficio real
  */
 
 import { useState } from "react";
@@ -16,7 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  CheckCircle2, Lock, Unlock, Link2, Unlink2, Upload, Loader2, AlertTriangle,
+  CheckCircle2, Lock, Unlock, Link2, Unlink2, Upload, Loader2,
+  AlertTriangle, ExternalLink,
 } from "lucide-react";
 import type { FingerprintResult } from "@/services/AudioFingerprintService";
 import type { CatalogAuthenticityReport } from "@/types/acoustid";
@@ -40,22 +45,22 @@ export function IPFSUploadForm({
 }: Props) {
   const { signMessage } = useWallet();
 
-  const [title, setTitle] = useState("");
-  const [artist, setArtist] = useState("");
+  // ── Detectar match de MB ──────────────────────────────────────────────────
+  const mbMatch = catalogReport?.matches?.[0];
+  const hasMBMatch = !!mbMatch && mbMatch.scorePercent >= 45;
+  const isHighRisk = authenticityScore >= 2;
+
+  // Si hay match de MB, precargar título/artista y bloquear inputs
+  const [title, setTitle] = useState(hasMBMatch ? (mbMatch?.title ?? "") : "");
+  const [artist, setArtist] = useState(hasMBMatch ? (mbMatch?.artist ?? "") : "");
   const [encrypt, setEncrypt] = useState(true);
   const [isSoulbound, setIsSoulbound] = useState(false);
 
   const [stage, setStage] = useState<UploadStage>("idle");
   const [stageMsg, setStageMsg] = useState("");
   const [error, setError] = useState<string | null>(null);
-
   const [audioCid, setAudioCid] = useState("");
   const [metadataCid, setMetadataCid] = useState("");
-  
-  // Determinar si la obra tiene match
-  const hasHighMatch = authenticityScore >= 2;
-  const hasMediumMatch = authenticityScore === 1;
-  const hasMBMatch = catalogReport && catalogReport.matches.length > 0 && catalogReport.matches[0].scorePercent >= 45;
 
   const isUploading = stage === "uploading-audio" || stage === "uploading-metadata";
   const isDone = stage === "done";
@@ -65,11 +70,11 @@ export function IPFSUploadForm({
       setError("Por favor completa el título y el artista");
       return;
     }
-    
     setError(null);
     const lh = LighthouseService.getInstance();
 
     try {
+      // ── 1. Subir audio ────────────────────────────────────────────────────
       setStage("uploading-audio");
       setStageMsg(encrypt ? "Firmando y encriptando audio..." : "Subiendo audio a IPFS...");
 
@@ -80,52 +85,37 @@ export function IPFSUploadForm({
         encrypt ? signMessage ?? undefined : undefined
       );
       setAudioCid(audioResult.cid);
-      console.log("✅ Audio subido:", audioResult.cid);
 
+      // ── 2. Subir metadata ERC-721 JSON ────────────────────────────────────
+      // El metadataCid es el que va al contrato. Incluye mbInfo si hay match.
       setStage("uploading-metadata");
       setStageMsg("Subiendo metadata a IPFS...");
 
-      // Usar título de MB si existe match significativo
-      let finalTitle = title.trim();
-      let finalArtist = artist.trim();
-      
-      // ✨ NUEVO: Preparar MB info para guardar en metadata
-      let mbInfo: { recordingId: string; title: string; artist: string; scorePercent: number; releaseTitle?: string } | undefined = undefined;
-      
-      if (hasMBMatch && catalogReport) {
-        const bestMatch = catalogReport.matches[0];
-        finalTitle = bestMatch.title || finalTitle;
-        finalArtist = bestMatch.artist || finalArtist;
-        
-        mbInfo = {
-          recordingId: bestMatch.recordingId,
-          title: bestMatch.title || finalTitle,
-          artist: bestMatch.artist || finalArtist,
-          scorePercent: bestMatch.scorePercent,
-          releaseTitle: bestMatch.releaseTitle,
-        };
-        
-        console.log("[IPFSUploadForm] Usando título de MusicBrainz:", finalTitle);
-      }
+      const mbInfo = hasMBMatch && mbMatch
+        ? {
+            recordingId: mbMatch.recordingId,
+            title: mbMatch.title ?? title,
+            artist: mbMatch.artist ?? artist,
+            scorePercent: mbMatch.scorePercent,
+            releaseTitle: mbMatch.releaseTitle,
+          }
+        : undefined;
 
-      // ✨ MODIFICADO: Pasar mbInfo a uploadMetadata
       const mCid = await lh.uploadMetadata(
-        finalTitle,
-        finalArtist,
+        title.trim(),
+        artist.trim(),
         audioResult.cid,
         audioResult.encrypted,
         audioFile.type || "audio/mpeg",
         mbInfo
       );
       setMetadataCid(mCid);
-      console.log("✅ Metadata subida:", mCid);
 
-      // Guardar en localStorage
       lh.saveUploadRecord({
         metadataCid: mCid,
         audioCid: audioResult.cid,
-        title: finalTitle,
-        artist: finalArtist,
+        title: title.trim(),
+        artist: artist.trim(),
         encrypted: audioResult.encrypted,
         uploadedAt: Date.now(),
         ownerAddress,
@@ -134,81 +124,43 @@ export function IPFSUploadForm({
       setStage("done");
       setStageMsg("");
     } catch (e: unknown) {
-      console.error("❌ Error en upload:", e);
       const msg = e instanceof Error ? e.message : "Error desconocido";
       setError(msg);
       setStage("error");
     }
   };
 
-  const handleReset = () => {
-    setStage("idle");
-    setAudioCid("");
-    setMetadataCid("");
-    setError(null);
-  };
-
+  // ── Post-upload ───────────────────────────────────────────────────────────
   if (isDone && metadataCid) {
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-      >
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
         <Card className="flex flex-col items-center gap-4 text-center p-6">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10">
             <CheckCircle2 className="h-8 w-8 text-emerald-500" />
           </div>
-          <h3 className="font-display text-xl font-bold text-white">
-            ¡Subida Exitosa a IPFS!
-          </h3>
-          
+          <h3 className="font-display text-xl font-bold text-white">¡Subida Exitosa a IPFS!</h3>
+
           {hasMBMatch && (
             <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 px-3 py-1">
               <CheckCircle2 className="mr-1 h-3 w-3" />
               Verificado en MusicBrainz
             </Badge>
           )}
-          
-          <div className="w-full space-y-2 text-left">
-            <p className="font-mono text-[10px] text-zinc-500">
-              Audio CID: {audioCid.slice(0, 20)}...
-            </p>
-            <p className="font-mono text-[10px] text-emerald-500">
-              Metadata CID: {metadataCid.slice(0, 20)}...
-            </p>
+
+          <div className="w-full space-y-1 text-left">
+            <p className="font-mono text-[10px] text-zinc-500">Audio: {audioCid.slice(0, 20)}...</p>
+            <p className="font-mono text-[10px] text-emerald-500">Certificado: {metadataCid.slice(0, 20)}...</p>
           </div>
-          
-          {/* ADVERTENCIA O REGISTRO */}
-          {hasHighMatch ? (
+
+          {isHighRisk ? (
             <div className="w-full rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
-                <p className="font-mono text-xs font-bold uppercase text-amber-500">
-                  Registro Blockchain Bloqueado
-                </p>
+                <p className="font-mono text-xs font-bold uppercase text-amber-500">Registro Blockchain Bloqueado</p>
               </div>
               <p className="text-xs text-zinc-400">
-                Esta obra tiene coincidencias significativas. 
-                No puede registrarse en blockchain, pero está en IPFS para demo.
+                Esta obra tiene coincidencias significativas. No puede registrarse en blockchain.
               </p>
-            </div>
-          ) : hasMediumMatch ? (
-            <div className="w-full space-y-3">
-              <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-3">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                  <p className="font-mono text-xs font-bold uppercase text-yellow-500">
-                    Coincidencias Parciales
-                  </p>
-                </div>
-              </div>
-              <RegisterWorkButton
-                fingerprintHash={`0x${fingerprint.sha256}`}
-                ipfsCid={metadataCid}
-                authenticityScore={authenticityScore}
-                soulbound={isSoulbound}
-                title={title}
-              />
             </div>
           ) : (
             <div className="w-full">
@@ -221,12 +173,8 @@ export function IPFSUploadForm({
               />
             </div>
           )}
-          
-          <Button 
-            variant="outline" 
-            onClick={handleReset}
-            className="w-full"
-          >
+
+          <Button variant="outline" onClick={() => { setStage("idle"); setAudioCid(""); setMetadataCid(""); }} className="w-full">
             Subir Otra Obra
           </Button>
         </Card>
@@ -234,19 +182,16 @@ export function IPFSUploadForm({
     );
   }
 
+  // ── Formulario ────────────────────────────────────────────────────────────
   return (
     <Card className="space-y-6">
       <div className="border-b border-surface-border pb-4">
-        <h3 className="font-display text-lg font-bold text-white">
-          Configuración de Subida a IPFS
-        </h3>
-        <p className="mt-1 font-mono text-[10px] text-zinc-500">
-          Los archivos se almacenarán en Lighthouse (IPFS)
-        </p>
+        <h3 className="font-display text-lg font-bold text-white">Configuración</h3>
+        <p className="mt-1 font-mono text-[10px] text-zinc-500">Almacenamiento en Lighthouse (IPFS)</p>
       </div>
 
-      {/* ADVERTENCIA SI TIENE MATCH */}
-      {hasMBMatch && catalogReport && (
+      {/* Badge MB match */}
+      {hasMBMatch && mbMatch && (
         <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-blue-400" />
@@ -255,66 +200,72 @@ export function IPFSUploadForm({
             </p>
           </div>
           <p className="mt-1 text-[11px] text-zinc-400">
-            {catalogReport.matches[0].title} - {catalogReport.matches[0].artist}
-            <br />
-            <span className="text-blue-400/60">
-              Score: {catalogReport.matches[0].scorePercent}%
-            </span>
+            {mbMatch.title} — {mbMatch.artist}
+            {mbMatch.releaseTitle && <span className="text-zinc-500"> · {mbMatch.releaseTitle}</span>}
           </p>
+          <p className="mt-1 font-mono text-[10px] text-blue-400/60">Score: {mbMatch.scorePercent}%</p>
+          {mbMatch.recordingId && (
+            <a
+              href={`https://musicbrainz.org/recording/${mbMatch.recordingId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex items-center gap-1 font-mono text-[9px] text-blue-400/60 hover:text-blue-400 transition-colors"
+            >
+              Ver en MusicBrainz <ExternalLink className="h-2.5 w-2.5" />
+            </a>
+          )}
         </div>
       )}
 
-      {/* CAMPOS DE TÍTULO Y ARTISTA */}
+      {/* Campos título/artista — bloqueados si hay match MB */}
       <div className="space-y-4">
         <div>
           <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-zinc-400">
-            Título de la obra
+            Título {hasMBMatch && <span className="text-blue-400/60">(verificado)</span>}
           </label>
           <Input
             type="text"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={hasMBMatch && catalogReport ? catalogReport.matches[0].title || "Título" : "Ej: Mi Canción"}
-            disabled={isUploading}
-            className={hasMBMatch ? "border-blue-500/30 bg-blue-500/5" : ""}
+            onChange={(e) => !hasMBMatch && setTitle(e.target.value)}
+            placeholder="Título de la obra"
+            disabled={isUploading || hasMBMatch}
+            readOnly={hasMBMatch}
+            className={hasMBMatch ? "border-blue-500/30 bg-blue-500/5 cursor-not-allowed opacity-80" : ""}
           />
           {hasMBMatch && (
             <p className="mt-1 font-mono text-[9px] text-blue-400/60">
-              ↑ Título verificado de MusicBrainz sugerido
+              🔒 Título verificado de MusicBrainz — no editable
             </p>
           )}
         </div>
-        
+
         <div>
           <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-zinc-400">
-            Artista
+            Artista {hasMBMatch && <span className="text-blue-400/60">(verificado)</span>}
           </label>
           <Input
             type="text"
             value={artist}
-            onChange={(e) => setArtist(e.target.value)}
-            placeholder={hasMBMatch && catalogReport ? catalogReport.matches[0].artist || "Artista" : "Ej: Nombre del Artista"}
-            disabled={isUploading}
-            className={hasMBMatch ? "border-blue-500/30 bg-blue-500/5" : ""}
+            onChange={(e) => !hasMBMatch && setArtist(e.target.value)}
+            placeholder="Nombre del Artista"
+            disabled={isUploading || hasMBMatch}
+            readOnly={hasMBMatch}
+            className={hasMBMatch ? "border-blue-500/30 bg-blue-500/5 cursor-not-allowed opacity-80" : ""}
           />
         </div>
       </div>
 
-      {/* OPCIONES */}
+      {/* Toggles */}
       <div className="grid grid-cols-2 gap-3">
         <button
           type="button"
-          onClick={() => setEncrypt(!encrypt)}
+          onClick={() => !isUploading && setEncrypt(!encrypt)}
           disabled={isUploading}
-          className={`flex w-full items-center gap-3 rounded-2xl border p-4 transition-all ${
-            encrypt
-              ? "border-violet/30 bg-violet-glow"
-              : "border-surface-border bg-surface-overlay"
+          className={`flex items-center gap-3 rounded-2xl border p-4 transition-all ${
+            encrypt ? "border-violet/30 bg-violet-glow" : "border-surface-border bg-surface-overlay"
           }`}
         >
-          {encrypt
-            ? <Lock className="h-4 w-4 text-violet" />
-            : <Unlock className="h-4 w-4 text-zinc-500" />}
+          {encrypt ? <Lock className="h-4 w-4 text-violet" /> : <Unlock className="h-4 w-4 text-zinc-500" />}
           <div className="text-left">
             <p className={`text-sm font-bold ${encrypt ? "text-violet" : "text-zinc-400"}`}>
               {encrypt ? "Encriptado" : "Público"}
@@ -325,29 +276,27 @@ export function IPFSUploadForm({
 
         <button
           type="button"
-          onClick={() => !hasHighMatch && setIsSoulbound(!isSoulbound)}
-          disabled={isUploading || hasHighMatch}
-          className={`flex w-full items-center gap-3 rounded-2xl border p-4 transition-all ${
-            isSoulbound && !hasHighMatch
+          onClick={() => !isUploading && !isHighRisk && setIsSoulbound(!isSoulbound)}
+          disabled={isUploading || isHighRisk}
+          className={`flex items-center gap-3 rounded-2xl border p-4 transition-all ${
+            isSoulbound && !isHighRisk
               ? "border-emerald-500/30 bg-emerald-500/5"
               : "border-surface-border bg-surface-overlay"
-          } ${hasHighMatch ? "opacity-50 cursor-not-allowed" : ""}`}
+          } ${isHighRisk ? "opacity-40 cursor-not-allowed" : ""}`}
         >
-          {isSoulbound && !hasHighMatch
+          {isSoulbound && !isHighRisk
             ? <Link2 className="h-4 w-4 text-emerald-500" />
             : <Unlink2 className="h-4 w-4 text-zinc-500" />}
           <div className="text-left">
-            <p className={`text-sm font-bold ${isSoulbound && !hasHighMatch ? "text-emerald-500" : "text-zinc-400"}`}>
+            <p className={`text-sm font-bold ${isSoulbound && !isHighRisk ? "text-emerald-500" : "text-zinc-400"}`}>
               {isSoulbound ? "Soulbound" : "Transferible"}
             </p>
-            <p className="text-[10px] text-zinc-600">
-              {hasHighMatch ? "Bloqueado" : "Tipo de NFT"}
-            </p>
+            <p className="text-[10px] text-zinc-600">{isHighRisk ? "No disponible" : "Tipo de NFT"}</p>
           </div>
         </button>
       </div>
 
-      {/* PROGRESO */}
+      {/* Progreso */}
       <AnimatePresence>
         {isUploading && (
           <motion.div
@@ -357,18 +306,13 @@ export function IPFSUploadForm({
             className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3"
           >
             <div className="flex items-center gap-3">
-              <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
-              <div>
-                <p className="font-mono text-xs font-bold text-emerald-500">
-                  {stageMsg}
-                </p>
-                <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-emerald-500/20">
+              <Loader2 className="h-4 w-4 animate-spin text-emerald-500 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-mono text-xs font-bold text-emerald-500 truncate">{stageMsg}</p>
+                <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-emerald-500/20">
                   <motion.div
                     className="h-full rounded-full bg-emerald-500"
-                    initial={{ width: "0%" }}
-                    animate={{ 
-                      width: stage === "uploading-audio" ? "45%" : "90%" 
-                    }}
+                    animate={{ width: stage === "uploading-audio" ? "45%" : "90%" }}
                     transition={{ duration: 0.5 }}
                   />
                 </div>
@@ -378,45 +322,24 @@ export function IPFSUploadForm({
         )}
       </AnimatePresence>
 
-      {/* ERROR */}
-      {error && (
-        <p className="text-center font-mono text-[10px] text-red-400">
-          {error}
-        </p>
-      )}
+      {error && <p className="text-center font-mono text-[10px] text-red-400">{error}</p>}
 
-      {/* BOTÓN DE SUBIR */}
       <Button
         onClick={handleSubmit}
         disabled={!title.trim() || !artist.trim() || isUploading}
-        className="w-full h-12 text-base font-bold"
+        className="w-full h-12"
         size="lg"
       >
         {isUploading ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            {stageMsg}
-          </>
+          <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{stageMsg}</>
         ) : (
-          <>
-            <Upload className="mr-2 h-4 w-4" />
-            {hasHighMatch ? "🚀 Subir a IPFS (Demo)" : "📤 Subir a IPFS"}
-          </>
+          <><Upload className="mr-2 h-4 w-4" />Subir a IPFS</>
         )}
       </Button>
-      
-      {/* MENSAJE DE AYUDA */}
-      {!isUploading && (
+
+      {!isUploading && (!title.trim() || !artist.trim()) && (
         <p className="text-center font-mono text-[9px] text-zinc-500">
-          {!title.trim() || !artist.trim() 
-            ? "✏️ Completa título y artista para continuar" 
-            : "✅ Listo para subir a IPFS"}
-        </p>
-      )}
-      
-      {hasHighMatch && (
-        <p className="text-center font-mono text-[9px] text-amber-500/60">
-          ⚠️ Registro blockchain bloqueado • Solo demostración IPFS
+          Completa título y artista para continuar
         </p>
       )}
     </Card>

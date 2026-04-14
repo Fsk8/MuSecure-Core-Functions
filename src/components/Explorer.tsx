@@ -1,174 +1,215 @@
 /**
- * MuSecure – Explorer (Versión FINAL CORREGIDA)
- * - Solo procesa JSONs que empiezan con "metadata_" (los nuevos)
+ * MuSecure – Explorer (Versión CORREGIDA)
+ * - Filtra JSONs por MIME type y extensión, no solo por nombre
+ * - Detecta archivos "blob" y "text" que Lighthouse usa para JSONs
  */
 
 import { useEffect, useState } from "react";
 import { LighthouseService } from "@/services/LighthouseService";
+import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
 import { usePrivy } from "@privy-io/react-auth";
+import { useWallet } from "@/hooks/useWallet";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "motion/react";
-import { Music, ExternalLink, CheckCircle2, Sparkles, Headphones, Lock, Globe } from "lucide-react";
+import {
+  Music, ExternalLink, CheckCircle2, Sparkles,
+  Headphones, Lock, Globe,
+} from "lucide-react";
 
-interface IPFSWork {
-  cid: string;
+interface MBInfo {
+  recordingId: string;
+  title: string;
+  artist: string;
+  scorePercent: number;
+  releaseTitle?: string;
+}
+
+interface WorkCard {
+  audioCid: string;
   fileName: string;
   title: string;
   artist: string;
   isEncrypted: boolean;
   isVerified: boolean;
-  mbInfo?: {
-    recordingId: string;
-    title: string;
-    artist: string;
-    scorePercent: number;
-    releaseTitle?: string;
-  };
-  loading: boolean;
+  mbInfo?: MBInfo;
+  hasMetadata: boolean;
 }
 
 function CardSkeleton() {
   return (
-    <Card className="flex flex-col gap-6">
-      <div className="flex items-center justify-between"><Skeleton className="h-5 w-32" /></div>
+    <Card className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-5 w-32" />
+        <Skeleton className="h-5 w-20" />
+      </div>
       <Skeleton className="h-5 w-3/4" />
       <Skeleton className="h-3 w-1/2" />
-      <div className="mt-auto"><Skeleton className="h-12 w-full rounded-xl" /></div>
+      <div className="mt-auto pt-4">
+        <Skeleton className="h-12 w-full rounded-xl" />
+      </div>
     </Card>
   );
 }
 
 export const Explorer = () => {
-  const [works, setWorks] = useState<IPFSWork[]>([]);
+  const [works, setWorks] = useState<WorkCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const { ready } = usePrivy();
+
+  const { ready, authenticated, login } = usePrivy();
+  const { address, signMessage } = useWallet();
 
   useEffect(() => {
-    const loadPublicWorks = async () => {
+    const loadWorks = async () => {
       try {
         setLoading(true);
         const lh = LighthouseService.getInstance();
-        
         const files = await lh.listUploads();
-        console.log(`📦 ${files.length} archivos totales en Lighthouse`);
-        
-        const audioFiles = files.filter((f: any) => 
-          !f.fileName.toLowerCase().endsWith('.json') &&
-          (f.mimeType?.startsWith('audio/') || f.mimeType === 'application/octet-stream')
-        );
-        
-        // ✨ SOLO obtener JSONs que empiezan con "metadata_" (los nuevos)
-        const jsonFiles = files.filter((f: any) => 
-          f.fileName.toLowerCase().startsWith('metadata_') && 
-          f.fileName.toLowerCase().endsWith('.json')
-        );
-        
-        console.log(`🎵 ${audioFiles.length} audios, 📄 ${jsonFiles.length} JSONs nuevos (metadata_)`);
-        
-        // Mostrar los JSONs encontrados
-        console.log('📋 JSONs metadata_:', jsonFiles.map((j: any) => j.fileName));
-        
-        const validMetadatas: any[] = [];
-        for (const jsonFile of jsonFiles) {
-          try {
-            const metadataUrl = LighthouseService.gatewayUrl(jsonFile.cid);
-            const response = await fetch(metadataUrl);
-            if (response.ok) {
-              const metadata = await response.json();
-              if (metadata.animation_url) {
-                validMetadatas.push({
-                  cid: jsonFile.cid,
-                  metadata
-                });
-                console.log(`✅ Metadata válido: ${jsonFile.fileName} -> ${metadata.name}`);
-              }
-            }
-          } catch (e) {
-            console.warn(`Error con ${jsonFile.fileName}:`, e);
+
+        console.log('═══════════════════════════════════════');
+        console.log(`📦 TOTAL ARCHIVOS: ${files.length}`);
+        console.log('═══════════════════════════════════════');
+
+        // Separar audios y JSONs de metadata
+        const audioFiles = files.filter((f: any) => {
+          const mimeType = f.mimeType?.toLowerCase() || '';
+          const fileName = f.fileName.toLowerCase();
+          
+          // Excluir JSONs
+          if (fileName.endsWith('.json')) return false;
+          if (mimeType === 'application/json') return false;
+          if (fileName === 'blob' || fileName === 'text') {
+            // Verificar si es JSON por el CID (los CIDs de metadata empiezan con 'bafkrei')
+            if (f.cid?.startsWith('bafkrei')) return false;
           }
-        }
-        
-        console.log(`📋 ${validMetadatas.length} metadatos válidos encontrados`);
-        
-        const worksList: IPFSWork[] = [];
-        
-        for (const audio of audioFiles) {
-          const work: IPFSWork = {
-            cid: audio.cid,
-            fileName: audio.fileName,
-            title: audio.fileName || "Sin título",
-            artist: "Cargando...",
-            isEncrypted: audio.mimeType === "application/octet-stream" || !audio.fileName.includes("."),
-            isVerified: false,
-            loading: true,
-          };
           
-          let metadataFound = false;
+          return true;
+        });
+
+        // ✨ CORRECCIÓN: Buscar JSONs por MIME type, extensión o nombre común
+        const metadataJsons = files.filter((f: any) => {
+          const fileName = f.fileName.toLowerCase();
+          const mimeType = f.mimeType?.toLowerCase() || '';
           
-          for (const item of validMetadatas) {
-            const audioInMetadata = item.metadata.animation_url?.replace('ipfs://', '');
+          return (
+            fileName.endsWith('.json') ||
+            mimeType === 'application/json' ||
+            fileName === 'blob' ||
+            fileName === 'text' ||
+            fileName.startsWith('metadata_')
+          );
+        });
+
+        console.log(`🎵 AUDIOS: ${audioFiles.length}`);
+        console.log(`📄 METADATA JSONs: ${metadataJsons.length}`);
+        metadataJsons.slice(0, 5).forEach((j: any) => {
+          console.log(`   📋 ${j.fileName} (${j.mimeType})`);
+          console.log(`      CID: ${j.cid}`);
+        });
+
+        // Fetch de todos los JSONs en paralelo
+        const metadataResults = await Promise.allSettled(
+          metadataJsons.map(async (f: any) => {
+            const url = LighthouseService.gatewayUrl(f.cid);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const json = await res.json();
+            return { cid: f.cid, fileName: f.fileName, json };
+          })
+        );
+
+        // Construir mapa: audioCid → metadata JSON
+        const metadataByAudioCid = new Map<string, any>();
+        
+        for (const r of metadataResults) {
+          if (r.status === "fulfilled") {
+            const { fileName, json } = r.value;
+            const animUrl: string = json.animation_url ?? "";
+            const audioCidFromJson = animUrl.replace("ipfs://", "").trim();
             
-            if (audioInMetadata === audio.cid) {
-              console.log(`✅ MATCH: ${audio.fileName} -> ${item.metadata.name}`);
-              
-              work.title = item.metadata.name || audio.fileName;
-              
-              const artistAttr = item.metadata.attributes?.find(
-                (a: any) => a.trait_type === 'Artista' || a.trait_type === 'Artist'
-              );
-              work.artist = artistAttr?.value || 'Artista desconocido';
-              
-              const mbAttr = item.metadata.attributes?.find(
-                (a: any) => a.trait_type === 'MusicBrainz'
-              );
-              
-              if (mbAttr?.value) {
-                try {
-                  work.mbInfo = typeof mbAttr.value === 'string' 
-                    ? JSON.parse(mbAttr.value) 
-                    : mbAttr.value;
-                  work.isVerified = true;
-                  work.title = work.mbInfo?.title || work.title;
-                  work.artist = work.mbInfo?.artist || work.artist;
-                  console.log(`🎵 MB VERIFIED: ${work.title} (${work.mbInfo?.scorePercent}%)`);
-                } catch (e) {
-                  console.warn('Error parsing MB info:', e);
-                }
-              }
-              
-              metadataFound = true;
-              break;
+            if (audioCidFromJson) {
+              metadataByAudioCid.set(audioCidFromJson, json);
+              console.log(`   ✅ ${fileName} → audioCid: ${audioCidFromJson.slice(0, 20)}...`);
             }
           }
-          
-          if (!metadataFound) {
-            work.artist = "Información no disponible";
-          }
-          
-          work.loading = false;
-          worksList.push(work);
         }
-        
-        console.log(`📊 RESUMEN: ${worksList.filter(w => w.isVerified).length} obras verificadas de ${worksList.length} total`);
-        
-        worksList.sort((a, b) => {
+
+        console.log(`📋 Mapa final: ${metadataByAudioCid.size} metadatos vinculados`);
+
+        // Construir WorkCards
+        const cards: WorkCard[] = audioFiles.map((audio: any) => {
+          const meta = metadataByAudioCid.get(audio.cid);
+
+          if (!meta) {
+            return {
+              audioCid: audio.cid,
+              fileName: audio.fileName,
+              title: audio.fileName || "Sin título",
+              artist: "—",
+              isEncrypted: audio.mimeType === "application/octet-stream" || !audio.fileName.includes("."),
+              isVerified: false,
+              hasMetadata: false,
+            };
+          }
+
+          const artistAttr = meta.attributes?.find(
+            (a: any) => a.trait_type === "Artista" || a.trait_type === "Artist"
+          );
+
+          const mbAttr = meta.attributes?.find(
+            (a: any) => a.trait_type === "MusicBrainz"
+          );
+
+          let mbInfo: MBInfo | undefined;
+          if (mbAttr?.value) {
+            try {
+              mbInfo = typeof mbAttr.value === "string"
+                ? JSON.parse(mbAttr.value)
+                : mbAttr.value;
+            } catch {
+              // Ignorar error de parseo
+            }
+          }
+
+          const encryptedAttr = meta.attributes?.find(
+            (a: any) => a.trait_type === "Protección" || a.trait_type === "Encrypted"
+          );
+          const isEncrypted =
+            encryptedAttr?.value === "Cifrado" ||
+            encryptedAttr?.value === true ||
+            audio.mimeType === "application/octet-stream";
+
+          return {
+            audioCid: audio.cid,
+            fileName: audio.fileName,
+            title: meta.name || audio.fileName,
+            artist: artistAttr?.value || "—",
+            isEncrypted,
+            isVerified: !!mbInfo,
+            mbInfo,
+            hasMetadata: true,
+          };
+        });
+
+        console.log(`📊 RESUMEN: ${cards.filter(c => c.isVerified).length} MB Verified de ${cards.length} total`);
+
+        cards.sort((a, b) => {
           if (a.isVerified && !b.isVerified) return -1;
           if (!a.isVerified && b.isVerified) return 1;
           return a.title.localeCompare(b.title);
         });
-        
-        setWorks(worksList);
-        
+
+        setWorks(cards);
       } catch (err) {
-        console.error('[Explorer] Error:', err);
+        console.error("[Explorer] Error:", err);
       } finally {
         setLoading(false);
       }
     };
-    
-    loadPublicWorks();
+
+    loadWorks();
   }, []);
 
   if (!ready || loading) {
@@ -186,7 +227,7 @@ export const Explorer = () => {
           <Music className="h-7 w-7 text-zinc-600" />
         </div>
         <p className="font-mono text-xs uppercase tracking-wider text-zinc-600">
-          No hay obras públicas en IPFS todavía
+          No hay obras en IPFS todavía
         </p>
       </motion.div>
     );
@@ -195,101 +236,91 @@ export const Explorer = () => {
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 pt-2">
       {works.map((work, index) => {
-        const publicAudioUrl = !work.isEncrypted && work.cid
-          ? LighthouseService.audioUrl(work.cid, 'audio/mpeg')
-          : '';
+        const publicAudioUrl = !work.isEncrypted && work.audioCid
+          ? LighthouseService.audioUrl(work.audioCid, "audio/mpeg")
+          : "";
+
+        const borderColor = work.isVerified
+          ? "hover:border-blue-500/30 hover:shadow-blue-500/10"
+          : "hover:border-emerald-500/20 hover:shadow-emerald-500/5";
 
         return (
           <motion.div
-            key={work.cid}
+            key={`${work.audioCid}-${index}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: index * 0.06 }}
+            transition={{ duration: 0.4, delay: index * 0.05 }}
           >
-            <Card className={`group flex h-full flex-col transition-all ${
-              work.isVerified 
-                ? "hover:border-blue-500/30 hover:shadow-lg hover:shadow-blue-500/10" 
-                : "hover:border-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/5"
-            }`}>
-              <div className="mb-6 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Badge variant={work.isEncrypted ? "default" : "secondary"}>
-                    {work.isEncrypted
-                      ? <><Lock className="mr-1 h-2.5 w-2.5" />Privado</>
-                      : <><Globe className="mr-1 h-2.5 w-2.5" />Público</>}
+            <Card className={`group flex h-full flex-col transition-all hover:shadow-lg ${borderColor}`}>
+              <div className="mb-6 flex items-center justify-between flex-wrap gap-2">
+                <Badge variant={work.isEncrypted ? "default" : "secondary"}>
+                  {work.isEncrypted
+                    ? <><Lock className="mr-1 h-2.5 w-2.5" />Privado</>
+                    : <><Globe className="mr-1 h-2.5 w-2.5" />Público</>}
+                </Badge>
+
+                {work.isVerified ? (
+                  <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+                    <CheckCircle2 className="mr-1 h-2.5 w-2.5" />
+                    MB Verified
                   </Badge>
-                  
-                  {!work.loading && (
-                    work.isVerified ? (
-                      <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-                        <CheckCircle2 className="mr-1 h-2.5 w-2.5" />
-                        MB Verified
-                      </Badge>
-                    ) : (
-                      <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
-                        <Sparkles className="mr-1 h-2.5 w-2.5" />
-                        Original
-                      </Badge>
-                    )
-                  )}
-                </div>
-                
-                {work.mbInfo && (
-                  <div className="text-right">
-                    <p className="font-mono text-[9px] text-blue-400/60">
-                      Score: {work.mbInfo.scorePercent}%
-                    </p>
-                  </div>
+                ) : (
+                  <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                    <Sparkles className="mr-1 h-2.5 w-2.5" />
+                    Original
+                  </Badge>
                 )}
               </div>
 
-              {work.loading ? (
-                <>
-                  <Skeleton className="h-5 w-3/4 mb-2" />
-                  <Skeleton className="h-3 w-1/2 mb-4" />
-                </>
-              ) : (
-                <>
-                  <h3 className="truncate font-display text-base font-bold uppercase tracking-tight text-white">
-                    {work.title}
-                  </h3>
-                  <p className={`mt-1 mb-4 truncate font-mono text-[11px] ${
-                    work.isVerified ? "text-blue-400/70" : "text-emerald-500/70"
-                  }`}>
-                    {work.artist}
-                  </p>
-                </>
-              )}
+              <h3 className="truncate font-display text-base font-bold uppercase tracking-tight text-white">
+                {work.title}
+              </h3>
+
+              <p className={`mt-1 mb-4 truncate font-mono text-[11px] ${
+                work.isVerified ? "text-blue-400/70" : "text-emerald-500/70"
+              }`}>
+                {work.artist}
+              </p>
 
               {work.isVerified && work.mbInfo && (
-                <div className="mb-4 rounded-lg bg-blue-500/5 border border-blue-500/20 p-3">
+                <div className="mb-4 rounded-xl bg-blue-500/5 border border-blue-500/20 p-3 space-y-1">
                   <p className="font-mono text-[9px] uppercase tracking-wider text-blue-400/60">
                     ✓ Verificado en MusicBrainz
                   </p>
-                  <p className="mt-1 text-[10px] text-zinc-400">
-                    {work.mbInfo.releaseTitle && `${work.mbInfo.releaseTitle} • `}
+                  <p className="font-mono text-[9px] text-blue-400/60">
                     Score: {work.mbInfo.scorePercent}%
                   </p>
-                  {work.mbInfo.recordingId && (
-                    <a
-                      href={`https://musicbrainz.org/recording/${work.mbInfo.recordingId}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-2 inline-flex items-center gap-1 text-[9px] text-blue-400/60 hover:text-blue-400 transition-colors"
-                    >
-                      Ver en MusicBrainz <ExternalLink className="h-2.5 w-2.5" />
-                    </a>
-                  )}
+                  <a
+                    href={`https://musicbrainz.org/recording/${work.mbInfo.recordingId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 font-mono text-[9px] text-blue-400/60 hover:text-blue-400 transition-colors"
+                  >
+                    Ver en MusicBrainz <ExternalLink className="h-2.5 w-2.5" />
+                  </a>
                 </div>
+              )}
+
+              {!work.hasMetadata && (
+                <p className="mb-4 font-mono text-[9px] text-zinc-600 italic">
+                  Obra legacy — sin metadata extendida
+                </p>
               )}
 
               <div className="mt-auto">
                 {work.isEncrypted ? (
-                  <div className="rounded-2xl border border-violet/20 bg-violet/5 p-3 text-center">
-                    <p className="font-mono text-[10px] text-violet/60">
-                      🔒 Obra privada - No reproducible públicamente
-                    </p>
-                  </div>
+                  authenticated && address && signMessage ? (
+                    <EncryptedAudioPlayer
+                      cid={work.audioCid}
+                      ownerAddress={address}
+                      signMessage={signMessage}
+                    />
+                  ) : (
+                    <Button onClick={() => login()} className="w-full" size="lg">
+                      <Lock className="h-3.5 w-3.5" />
+                      Conectar para Escuchar
+                    </Button>
+                  )
                 ) : publicAudioUrl ? (
                   <a
                     href={publicAudioUrl}
@@ -302,22 +333,21 @@ export const Explorer = () => {
                         : "border-emerald-500/20 bg-emerald-500/5 hover:border-emerald-500/40 hover:bg-emerald-500/10",
                     ].join(" ")}
                   >
-                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-lg transition-transform group-hover/play:scale-105 ${
-                      work.isVerified 
-                        ? "bg-blue-500 shadow-blue-500/25" 
-                        : "bg-emerald-500 shadow-emerald-500/25"
-                    }`}>
+                    <span className={[
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-lg transition-transform group-hover/play:scale-105",
+                      work.isVerified
+                        ? "bg-blue-500 shadow-blue-500/25"
+                        : "bg-emerald-500 shadow-emerald-500/25",
+                    ].join(" ")}>
                       <Headphones className="h-4 w-4 text-black" />
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-white">Escuchar</p>
-                      <p className="font-mono text-[10px] text-zinc-500 truncate">
-                        Abrir en IPFS Gateway
-                      </p>
+                      <p className="font-mono text-[10px] text-zinc-500 truncate">Abrir en IPFS Gateway</p>
                     </div>
                     <ExternalLink className={`h-3.5 w-3.5 shrink-0 transition-colors ${
-                      work.isVerified 
-                        ? "text-blue-500/40 group-hover/play:text-blue-500" 
+                      work.isVerified
+                        ? "text-blue-500/40 group-hover/play:text-blue-500"
                         : "text-emerald-500/40 group-hover/play:text-emerald-500"
                     }`} />
                   </a>
