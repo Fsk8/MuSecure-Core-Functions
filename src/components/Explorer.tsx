@@ -1,12 +1,13 @@
 /**
- * MuSecure – Explorer (Versión FINAL CON PORTADAS)
+ * MuSecure – Explorer (Versión FINAL CON PRIORIDAD DE VERSIONES)
  * - Filtra solo obras públicas con metadata (para demo limpia)
  * - Filtra solo archivos de audio válidos (por extensión)
  * - Mantiene obras encriptadas (sin extensión)
  * - Excluye CIDs problemáticos que fuerzan descarga
  * - Deduplica por CID
  * - Deduplica por título + artista
- * - Prioriza la mejor versión de cada obra
+ * - PRIORIZA la versión con releaseId (portada) sobre las antiguas
+ * - PRIORIZA la versión más reciente si todo lo demás es igual
  * - Badges "MB Verified" vs "Original"
  * - Muestra portada de Cover Art Archive (con fallback profesional)
  */
@@ -23,12 +24,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "motion/react";
 import {
   Music, ExternalLink, CheckCircle2, Sparkles,
-  Headphones, Lock, Globe, ImageOff,
+  Headphones, Lock, Globe,
 } from "lucide-react";
 
 interface MBInfo {
   recordingId: string;
-  releaseId?: string | null;  // ✨ PARA COVER ART ARCHIVE
+  releaseId?: string | null;
   title: string;
   artist: string;
   scorePercent: number;
@@ -37,7 +38,7 @@ interface MBInfo {
 
 function getCoverArtUrl(releaseId: string | null | undefined): string | null {
   if (!releaseId) return null;
-  return `https://coverartarchive.org/release/${releaseId}/front-250`;
+  return `https://coverartarchive.org/release/${releaseId}/front-500`;
 }
 
 interface WorkCard {
@@ -70,7 +71,7 @@ function CardSkeleton() {
         <Skeleton className="h-5 w-32" />
         <Skeleton className="h-5 w-20" />
       </div>
-      <Skeleton className="h-40 w-full rounded-xl" />
+      <Skeleton className="h-48 w-full rounded-xl" />
       <Skeleton className="h-5 w-3/4" />
       <Skeleton className="h-3 w-1/2" />
       <div className="mt-auto pt-4">
@@ -230,7 +231,7 @@ export const Explorer = () => {
               
               mbInfo = {
                 recordingId: parsed.recordingId,
-                releaseId: parsed.releaseId || null,  // ✨ EXTRAER releaseId
+                releaseId: parsed.releaseId || null,
                 title: parsed.title,
                 artist: parsed.artist,
                 scorePercent: parsed.scorePercent,
@@ -266,7 +267,7 @@ export const Explorer = () => {
         console.log(`📊 Cards antes de deduplicar por título: ${cards.length}`);
         console.log(`📊 MB Verified antes de deduplicar: ${cards.filter(c => c.isVerified).length}`);
 
-        // ✨ NUEVO: Deduplicar por título + artista
+        // ✨ NUEVO: Deduplicar por título + artista (PRIORIZANDO releaseId Y VERSIONES RECIENTES)
         const uniqueCards = new Map<string, WorkCard>();
         
         for (const card of cards) {
@@ -275,14 +276,55 @@ export const Explorer = () => {
           
           if (!existing) {
             uniqueCards.set(key, card);
+            console.log(`   🆕 Nueva obra: ${card.title} (releaseId: ${!!card.mbInfo?.releaseId})`);
           } else {
-            if (card.hasMetadata && !existing.hasMetadata) {
+            // ✨ LÓGICA DE PRIORIDAD MEJORADA
+            const cardHasReleaseId = !!card.mbInfo?.releaseId;
+            const existingHasReleaseId = !!existing.mbInfo?.releaseId;
+            
+            // Detectar cuál es más reciente (por timestamp en el nombre)
+            const cardTimestamp = card.fileName.match(/\d{13}/)?.[0] || '';
+            const existingTimestamp = existing.fileName.match(/\d{13}/)?.[0] || '';
+            const cardIsNewer = cardTimestamp > existingTimestamp;
+            
+            let shouldReplace = false;
+            let reason = '';
+            
+            // 1. PRIORIDAD MÁXIMA: La que tiene releaseId (portada) > la que no
+            if (cardHasReleaseId && !existingHasReleaseId) {
+              shouldReplace = true;
+              reason = 'tiene portada (releaseId)';
+            } 
+            // 2. Si ambas tienen o no tienen portada → criterios secundarios
+            else if (cardHasReleaseId === existingHasReleaseId) {
+              // 2a. La que tiene metadata > la que no
+              if (card.hasMetadata && !existing.hasMetadata) {
+                shouldReplace = true;
+                reason = 'tiene metadata';
+              }
+              // 2b. La verificada > la no verificada
+              else if (card.isVerified && !existing.isVerified) {
+                shouldReplace = true;
+                reason = 'está verificada';
+              }
+              // 2c. La más reciente > la más antigua
+              else if (cardIsNewer) {
+                shouldReplace = true;
+                reason = 'es más reciente';
+              }
+              // 2d. Nombre descriptivo > blob/text
+              else if (!card.fileName.includes('blob') && !card.fileName.includes('text') &&
+                       (existing.fileName.includes('blob') || existing.fileName.includes('text'))) {
+                shouldReplace = true;
+                reason = 'tiene nombre descriptivo';
+              }
+            }
+            
+            if (shouldReplace) {
               uniqueCards.set(key, card);
-            } else if (card.isVerified && !existing.isVerified) {
-              uniqueCards.set(key, card);
-            } else if (!card.fileName.includes('blob') && !card.fileName.includes('text') &&
-                     (existing.fileName.includes('blob') || existing.fileName.includes('text'))) {
-              uniqueCards.set(key, card);
+              console.log(`   🔄 Reemplazando "${card.title}": nueva versión ${reason}`);
+            } else {
+              console.log(`   ⏭️ Manteniendo versión anterior de "${card.title}"`);
             }
           }
         }
@@ -383,30 +425,32 @@ export const Explorer = () => {
                 )}
               </div>
 
-              {/* ✨ PORTADA - CORREGIDA */}
+              {/* ✨ PORTADA - MÁS GRANDE Y CON object-contain */}
               {work.isVerified ? (
                 <div className="mb-4 overflow-hidden rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-blue-600/5">
                   {coverUrl && !hasImageError ? (
-                    <img
-                      src={coverUrl}
-                      alt={`Portada de ${work.title}`}
-                      className="h-40 w-full object-cover"
-                      onError={() => handleImageError(work.audioCid)}
-                    />
+                    <div className="flex items-center justify-center p-4 bg-black/20">
+                      <img
+                        src={coverUrl}
+                        alt={`Portada de ${work.title}`}
+                        className="h-48 w-full object-contain"
+                        onError={() => handleImageError(work.audioCid)}
+                      />
+                    </div>
                   ) : (
-                    <div className="h-40 w-full flex flex-col items-center justify-center">
-                      <Music className="h-10 w-10 text-blue-400/60 mb-2" />
+                    <div className="h-48 w-full flex flex-col items-center justify-center">
+                      <Music className="h-12 w-12 text-blue-400/60 mb-2" />
                       <p className="font-mono text-[10px] uppercase tracking-wider text-blue-400/60">MB Verified</p>
                       {work.mbInfo?.scorePercent && (
-                        <p className="font-display text-2xl font-bold text-blue-400 mt-1">{work.mbInfo.scorePercent}%</p>
+                        <p className="font-display text-3xl font-bold text-blue-400 mt-1">{work.mbInfo.scorePercent}%</p>
                       )}
                     </div>
                   )}
                 </div>
               ) : (
                 <div className="mb-4 overflow-hidden rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-emerald-600/5">
-                  <div className="h-40 w-full flex flex-col items-center justify-center">
-                    <Music className="h-10 w-10 text-emerald-400/60 mb-2" />
+                  <div className="h-48 w-full flex flex-col items-center justify-center">
+                    <Music className="h-12 w-12 text-emerald-400/60 mb-2" />
                     <p className="font-mono text-[10px] uppercase tracking-wider text-emerald-400/60">Original</p>
                   </div>
                 </div>
@@ -426,6 +470,9 @@ export const Explorer = () => {
                 <div className="mb-4 rounded-xl bg-blue-500/5 border border-blue-500/20 p-3 space-y-1">
                   <p className="font-mono text-[9px] uppercase tracking-wider text-blue-400/60">
                     ✓ Verificado en MusicBrainz
+                  </p>
+                  <p className="font-mono text-[9px] text-blue-400/60">
+                    Score: {work.mbInfo.scorePercent}%
                   </p>
                   <a
                     href={`https://musicbrainz.org/recording/${work.mbInfo.recordingId}`}
