@@ -35,7 +35,7 @@ async function fetchReleaseIdFromMusicBrainz(recordingId: string): Promise<strin
     
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'MuSecure/1.0 (https://musecure.app)',
+        'User-Agent': 'MuSecure/1.0 (https://mu-secure-core-functions-anhj.vercel.app/)',
         'Accept': 'application/json'
       }
     });
