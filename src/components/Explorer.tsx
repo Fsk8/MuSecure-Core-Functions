@@ -1,5 +1,5 @@
 /**
- * MuSecure – Explorer (Versión FINAL CON SOPORTE MÓVIL)
+ * MuSecure – Explorer (Versión FINAL CON PROXIES PARA MÓVIL)
  * - Filtra solo obras públicas con metadata (para demo limpia)
  * - Filtra solo archivos de audio válidos (por extensión)
  * - Mantiene obras encriptadas (sin extensión)
@@ -9,7 +9,7 @@
  * - PRIORIZA la versión con releaseId (portada) sobre las antiguas
  * - PRIORIZA la versión más reciente si todo lo demás es igual
  * - Badges "MB Verified" vs "Original"
- * - Muestra portada de Cover Art Archive con fallback para móvil
+ * - Muestra portada usando proxies gratuitos (funciona en móvil)
  */
 
 import { useEffect, useState } from "react";
@@ -34,22 +34,6 @@ interface MBInfo {
   artist: string;
   scorePercent: number;
   releaseTitle?: string;
-}
-
-// ✨ Función mejorada con múltiples fuentes de portada
-function getCoverArtUrl(releaseId: string | null | undefined): string | null {
-  if (!releaseId) return null;
-  // Cover Art Archive (primera opción)
-  return `https://coverartarchive.org/release/${releaseId}/front-500`;
-}
-
-// URLs alternativas para fallback
-function getAlternativeCoverUrls(releaseId: string): string[] {
-  return [
-    `https://coverartarchive.org/release/${releaseId}/front-250`,
-    `https://coverartarchive.org/release/${releaseId}/front`,
-    `https://musicbrainz.org/release/${releaseId}/cover-art`,
-  ];
 }
 
 interface WorkCard {
@@ -92,7 +76,7 @@ function CardSkeleton() {
   );
 }
 
-// ✨ Componente de imagen con fallback progresivo
+// ✨ Componente de imagen con proxies para móvil
 function CoverImage({ releaseId, title, onFinalError }: { 
   releaseId: string; 
   title: string;
@@ -101,38 +85,43 @@ function CoverImage({ releaseId, title, onFinalError }: {
   const [currentUrlIndex, setCurrentUrlIndex] = useState(0);
   const [errorCount, setErrorCount] = useState(0);
   
-  const urls = [
-    getCoverArtUrl(releaseId)!,
-    ...getAlternativeCoverUrls(releaseId)
+  // URL original de Cover Art Archive
+  const originalUrl = `https://coverartarchive.org/release/${releaseId}/front-500`;
+  
+  // Proxies gratuitos que funcionan en móvil (sin CORS)
+  const proxiedUrls = [
+    // Weserv - rápido, sin CORS, optimizado para móvil
+    `https://images.weserv.nl/?url=${encodeURIComponent(originalUrl)}&w=400&h=400&fit=contain&output=jpeg&q=85&default=404`,
+    // Cloudflare Worker Proxy - alternativa confiable
+    `https://wsrv.nl/?url=${encodeURIComponent(originalUrl)}&w=400&h=400&fit=contain&output=jpeg&default=404`,
+    // Original como último recurso (puede fallar en móvil por CORS)
+    originalUrl,
   ];
   
   const handleError = () => {
-    if (currentUrlIndex < urls.length - 1) {
-      // Intentar con la siguiente URL
+    if (currentUrlIndex < proxiedUrls.length - 1) {
       setCurrentUrlIndex(prev => prev + 1);
       setErrorCount(prev => prev + 1);
-      console.log(`🔄 Fallback a URL alternativa ${currentUrlIndex + 1}/${urls.length} para ${title}`);
+      console.log(`🔄 Fallback a proxy ${currentUrlIndex + 1}/${proxiedUrls.length} para "${title}"`);
     } else {
-      // Todas las URLs fallaron
-      console.log(`❌ Todas las URLs fallaron para ${title}`);
+      console.log(`❌ Todos los proxies fallaron para "${title}"`);
       onFinalError();
     }
   };
   
   return (
-    <div className="flex items-center justify-center p-4 bg-black/20">
+    <div className="flex items-center justify-center p-4 bg-black/20 relative">
       <img
-        src={urls[currentUrlIndex]}
-        alt={`Portada de ${title}`}
+        src={proxiedUrls[currentUrlIndex]}
+        alt={title}
         className="h-48 w-full object-contain"
         onError={handleError}
-        crossOrigin="anonymous"
         loading="lazy"
       />
-      {errorCount > 0 && errorCount < urls.length && (
-        <div className="absolute bottom-1 right-1 bg-black/50 rounded-full px-2 py-0.5">
-          <p className="font-mono text-[8px] text-zinc-400">
-            Intentando {errorCount}/{urls.length - 1}
+      {errorCount > 0 && errorCount < proxiedUrls.length - 1 && (
+        <div className="absolute bottom-1 right-1 bg-black/60 rounded-full px-2 py-0.5">
+          <p className="font-mono text-[8px] text-zinc-300">
+            {errorCount}/{proxiedUrls.length - 1}
           </p>
         </div>
       )}
@@ -453,7 +442,6 @@ export const Explorer = () => {
           ? "hover:border-blue-500/30 hover:shadow-blue-500/10"
           : "hover:border-emerald-500/20 hover:shadow-emerald-500/5";
 
-        const coverUrl = getCoverArtUrl(work.mbInfo?.releaseId);
         const hasImageError = imageErrors.has(work.audioCid);
 
         return (
@@ -484,9 +472,9 @@ export const Explorer = () => {
                 )}
               </div>
 
-              {/* ✨ PORTADA CON FALLBACK PARA MÓVIL */}
+              {/* ✨ PORTADA CON PROXIES PARA MÓVIL */}
               {work.isVerified ? (
-                <div className="mb-4 overflow-hidden rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-blue-600/5 relative">
+                <div className="mb-4 overflow-hidden rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-blue-600/5">
                   {work.mbInfo?.releaseId && !hasImageError ? (
                     <CoverImage
                       releaseId={work.mbInfo.releaseId}
