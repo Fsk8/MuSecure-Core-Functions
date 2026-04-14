@@ -1,5 +1,5 @@
 /**
- * MuSecure – Explorer (Versión FINAL CON PROXIES PARA MÓVIL)
+ * MuSecure – Explorer (Versión FINAL CON SOPORTE PARA VERCEL)
  * - Filtra solo obras públicas con metadata (para demo limpia)
  * - Filtra solo archivos de audio válidos (por extensión)
  * - Mantiene obras encriptadas (sin extensión)
@@ -9,7 +9,7 @@
  * - PRIORIZA la versión con releaseId (portada) sobre las antiguas
  * - PRIORIZA la versión más reciente si todo lo demás es igual
  * - Badges "MB Verified" vs "Original"
- * - Muestra portada usando proxies gratuitos (funciona en móvil)
+ * - Muestra portada usando proxy de Vercel en producción
  */
 
 import { useEffect, useState } from "react";
@@ -34,6 +34,21 @@ interface MBInfo {
   artist: string;
   scorePercent: number;
   releaseTitle?: string;
+}
+
+// ✨ Función que elige la URL correcta según el entorno
+function getCoverArtUrl(releaseId: string | null | undefined): string | null {
+  if (!releaseId) return null;
+  
+  // En desarrollo (local): usar proxy de Vite o Weserv
+  if (import.meta.env.DEV) {
+    // Weserv funciona bien en local sin configuración adicional
+    return `https://images.weserv.nl/?url=${encodeURIComponent(`https://coverartarchive.org/release/${releaseId}/front-500`)}&w=400&h=400&fit=contain&output=jpeg&q=85`;
+  }
+  
+  // En producción (Vercel): usar el rewrite configurado en vercel.json
+  // Esto evita CORS porque la petición se hace al mismo origen
+  return `/api/cover/${releaseId}`;
 }
 
 interface WorkCard {
@@ -76,35 +91,24 @@ function CardSkeleton() {
   );
 }
 
-// ✨ Componente de imagen con proxies para móvil
+// ✨ Componente de imagen con fallback
 function CoverImage({ releaseId, title, onFinalError }: { 
   releaseId: string; 
   title: string;
   onFinalError: () => void;
 }) {
-  const [currentUrlIndex, setCurrentUrlIndex] = useState(0);
+  const coverUrl = getCoverArtUrl(releaseId);
   const [errorCount, setErrorCount] = useState(0);
   
-  // URL original de Cover Art Archive
-  const originalUrl = `https://coverartarchive.org/release/${releaseId}/front-500`;
-  
-  // Proxies gratuitos que funcionan en móvil (sin CORS)
-  const proxiedUrls = [
-    // Weserv - rápido, sin CORS, optimizado para móvil
-    `https://images.weserv.nl/?url=${encodeURIComponent(originalUrl)}&w=400&h=400&fit=contain&output=jpeg&q=85&default=404`,
-    // Cloudflare Worker Proxy - alternativa confiable
-    `https://wsrv.nl/?url=${encodeURIComponent(originalUrl)}&w=400&h=400&fit=contain&output=jpeg&default=404`,
-    // Original como último recurso (puede fallar en móvil por CORS)
-    originalUrl,
-  ];
+  if (!coverUrl) {
+    onFinalError();
+    return null;
+  }
   
   const handleError = () => {
-    if (currentUrlIndex < proxiedUrls.length - 1) {
-      setCurrentUrlIndex(prev => prev + 1);
-      setErrorCount(prev => prev + 1);
-      console.log(`🔄 Fallback a proxy ${currentUrlIndex + 1}/${proxiedUrls.length} para "${title}"`);
-    } else {
-      console.log(`❌ Todos los proxies fallaron para "${title}"`);
+    setErrorCount(prev => prev + 1);
+    if (errorCount >= 2) {
+      console.log(`❌ Imagen falló después de ${errorCount} intentos para "${title}"`);
       onFinalError();
     }
   };
@@ -112,19 +116,13 @@ function CoverImage({ releaseId, title, onFinalError }: {
   return (
     <div className="flex items-center justify-center p-4 bg-black/20 relative">
       <img
-        src={proxiedUrls[currentUrlIndex]}
+        src={coverUrl}
         alt={title}
         className="h-48 w-full object-contain"
         onError={handleError}
         loading="lazy"
+        crossOrigin="anonymous"
       />
-      {errorCount > 0 && errorCount < proxiedUrls.length - 1 && (
-        <div className="absolute bottom-1 right-1 bg-black/60 rounded-full px-2 py-0.5">
-          <p className="font-mono text-[8px] text-zinc-300">
-            {errorCount}/{proxiedUrls.length - 1}
-          </p>
-        </div>
-      )}
     </div>
   );
 }
@@ -326,11 +324,9 @@ export const Explorer = () => {
             uniqueCards.set(key, card);
             console.log(`   🆕 Nueva obra: ${card.title} (releaseId: ${!!card.mbInfo?.releaseId})`);
           } else {
-            // ✨ LÓGICA DE PRIORIDAD MEJORADA
             const cardHasReleaseId = !!card.mbInfo?.releaseId;
             const existingHasReleaseId = !!existing.mbInfo?.releaseId;
             
-            // Detectar cuál es más reciente (por timestamp en el nombre)
             const cardTimestamp = card.fileName.match(/\d{13}/)?.[0] || '';
             const existingTimestamp = existing.fileName.match(/\d{13}/)?.[0] || '';
             const cardIsNewer = cardTimestamp > existingTimestamp;
@@ -338,30 +334,20 @@ export const Explorer = () => {
             let shouldReplace = false;
             let reason = '';
             
-            // 1. PRIORIDAD MÁXIMA: La que tiene releaseId (portada) > la que no
             if (cardHasReleaseId && !existingHasReleaseId) {
               shouldReplace = true;
               reason = 'tiene portada (releaseId)';
-            } 
-            // 2. Si ambas tienen o no tienen portada → criterios secundarios
-            else if (cardHasReleaseId === existingHasReleaseId) {
-              // 2a. La que tiene metadata > la que no
+            } else if (cardHasReleaseId === existingHasReleaseId) {
               if (card.hasMetadata && !existing.hasMetadata) {
                 shouldReplace = true;
                 reason = 'tiene metadata';
-              }
-              // 2b. La verificada > la no verificada
-              else if (card.isVerified && !existing.isVerified) {
+              } else if (card.isVerified && !existing.isVerified) {
                 shouldReplace = true;
                 reason = 'está verificada';
-              }
-              // 2c. La más reciente > la más antigua
-              else if (cardIsNewer) {
+              } else if (cardIsNewer) {
                 shouldReplace = true;
                 reason = 'es más reciente';
-              }
-              // 2d. Nombre descriptivo > blob/text
-              else if (!card.fileName.includes('blob') && !card.fileName.includes('text') &&
+              } else if (!card.fileName.includes('blob') && !card.fileName.includes('text') &&
                        (existing.fileName.includes('blob') || existing.fileName.includes('text'))) {
                 shouldReplace = true;
                 reason = 'tiene nombre descriptivo';
@@ -381,7 +367,6 @@ export const Explorer = () => {
         
         console.log(`📊 Antes de filtrar para demo: ${finalCards.length} obras`);
         
-        // ✨ FILTRO PARA DEMO: Solo obras públicas con metadata
         const demoCards = finalCards.filter(card => 
           card.hasMetadata && !card.isEncrypted
         );
@@ -472,7 +457,7 @@ export const Explorer = () => {
                 )}
               </div>
 
-              {/* ✨ PORTADA CON PROXIES PARA MÓVIL */}
+              {/* ✨ PORTADA CON SOPORTE PARA VERCEL */}
               {work.isVerified ? (
                 <div className="mb-4 overflow-hidden rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-blue-600/5">
                   {work.mbInfo?.releaseId && !hasImageError ? (
