@@ -23,19 +23,24 @@ function pickReleaseGroupType(rec: AcoustIdRecording): string | undefined {
 }
 
 /**
- * Obtiene releaseId desde la API de MusicBrainz
+ * Obtiene releaseId desde la API de MusicBrainz (usando proxy en producción)
  */
 async function fetchReleaseIdFromMusicBrainz(recordingId: string): Promise<string | null> {
   try {
-    // Rate limiting: 1 segundo entre llamadas (MusicBrainz permite 1 req/seg)
+    // Rate limiting: 1 segundo entre llamadas
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    const url = `https://musicbrainz.org/ws/2/recording/${recordingId}?inc=releases&fmt=json`;
+    // ✨ Usar proxy de Vercel en producción, URL directa en desarrollo
+    const url = import.meta.env.DEV
+      ? `https://musicbrainz.org/ws/2/recording/${recordingId}?inc=releases&fmt=json`
+      : `/api/musicbrainz/recording/${recordingId}`;
+    
     console.log(`🔍 [MusicBrainz] Buscando releases para recording: ${recordingId}`);
+    console.log(`🌐 URL: ${url}`);
     
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'MuSecure/1.0 (https://mu-secure-core-functions-anhj.vercel.app/)',
+        'User-Agent': 'MuSecure/1.0 (https://musecure.vercel.app)',
         'Accept': 'application/json'
       }
     });
@@ -85,7 +90,6 @@ async function fetchReleaseIdFromMusicBrainz(recordingId: string): Promise<strin
 
 /**
  * Extrae el releaseId para Cover Art Archive.
- * AHORA CON LLAMADA A MUSICBRAINZ SI NO ESTÁ EN ACOUSTID
  */
 async function pickReleaseId(rec: AcoustIdRecording): Promise<string | undefined> {
   // 1. Intentar obtener de AcoustID
@@ -102,7 +106,7 @@ async function pickReleaseId(rec: AcoustIdRecording): Promise<string | undefined
     }
   }
   
-  // 2. Si no, buscar en MusicBrainz usando recordingId
+  // 2. Si no, buscar en MusicBrainz usando recordingId (con proxy)
   if (rec.id) {
     console.log(`🔍 [AcoustID] No tiene releaseId, buscando en MusicBrainz...`);
     const releaseId = await fetchReleaseIdFromMusicBrainz(rec.id);
@@ -134,7 +138,7 @@ async function collectMatches(results: AcoustIdResult[]): Promise<CatalogMatchRo
         artist: rec.artists?.map((a) => a.name).filter(Boolean).join(", "),
         releaseTitle: pickReleaseTitle(rec),
         releaseGroupType: pickReleaseGroupType(rec),
-        releaseId: releaseId || null, // ✨ AHORA SÍ VIENE CON releaseId
+        releaseId: releaseId || undefined,
         scorePercent: pct,
       };
       
@@ -211,7 +215,7 @@ export async function interpretAcoustIdLookup(
   const originalityScore = Math.round((1 - bestMatchScore) * 100);
   const registrationRisk = riskFromScore(bestMatchScore);
   
-  // ✨ AHORA collectMatches ES ASYNC y obtiene releaseId
+  // ✨ collectMatches ahora obtiene releaseId usando el proxy
   const matches = await collectMatches(results);
   const acoustIdOnlyTracks = collectAcoustIdOnlyTracks(results);
 
