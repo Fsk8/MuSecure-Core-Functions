@@ -2,6 +2,8 @@
  * MuSecure – services/LighthouseService.ts
  *
  * Usa "as any" para el SDK de Lighthouse — evita errores de tipos TS.
+ * CORREGIDO: uploadMetadata ahora usa upload() en lugar de uploadText()
+ * para que los metadatos sean accesibles públicamente en IPFS.
  */
 
 function getApiKey(): string {
@@ -139,39 +141,67 @@ export class LighthouseService {
    * IMPORTANTE: El CID devuelto es el que va al contrato inteligente (registerWork),
    * NO el CID del audio. El audio se referencia dentro del JSON como animation_url.
    *
+   * ✨ CORREGIDO: Ahora usa upload() en lugar de uploadText() para que los metadatos
+   * sean accesibles públicamente en IPFS.
+   *
    * @returns CID del JSON de metadata
    */
-  // Modifica solo esta función dentro de LighthouseService.ts
   async uploadMetadata(
     title: string,
     artist: string,
     audioCid: string,
     isEncrypted: boolean,
-    mimeType: string
+    mimeType: string,
+    mbInfo?: { recordingId: string; title: string; artist: string; scorePercent: number; releaseTitle?: string }
   ): Promise<string> {
     try {
       const lh = await this.getLh();
       const apiKey = getApiKey();
 
       // Estructura compatible con marketplaces y exploradores
+      const attributes: Array<{ trait_type: string; value: string | boolean }> = [
+        { trait_type: "Artista", value: artist },
+        { trait_type: "Protección", value: isEncrypted ? "Cifrado" : "Público" },
+        { trait_type: "Tipo de Archivo", value: mimeType }
+      ];
+      
+      // Agregar MusicBrainz info si existe
+      if (mbInfo) {
+        attributes.push({
+          trait_type: "MusicBrainz",
+          value: JSON.stringify(mbInfo)
+        });
+      }
+
       const nftMetadata: NFTMetadata = {
-        name: title, // Aquí se reutiliza el título del form
+        name: title,
         description: `Certificado de Autenticidad MuSecure para la obra "${title}" de ${artist}.`,
-        image: "ipfs://QmYwAP...tu_logo_o_cover_aqui", // Podrías pasar un artworkCid si lo tienes
-        animation_url: isEncrypted ? "" : `ipfs://${audioCid}`, // Solo visible si es público
-        attributes: [
-          { trait_type: "Artista", value: artist },
-          { trait_type: "Protección", value: isEncrypted ? "Cifrado" : "Público" },
-          { trait_type: "Tipo de Archivo", value: mimeType }
-        ],
+        image: "ipfs://bafybeibvbfxhsexhqy6mipbqk7qmlolhynxfhqq7c7h4yzb5pcl5u4ixe4",
+        animation_url: isEncrypted ? "" : `ipfs://${audioCid}`,
+        attributes,
       };
 
+      // ✨ CORRECCIÓN: Usar upload() en lugar de uploadText()
+      // uploadText() sube como texto plano que a veces no es accesible públicamente
+      // upload() con Blob asegura que el archivo sea tratado como un archivo normal
       const jsonStr = JSON.stringify(nftMetadata);
-      const res = await lh.uploadText(jsonStr, apiKey);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const fileName = `metadata_${Date.now()}_${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
       
-      // El SDK de Lighthouse a veces devuelve el CID en res.data.Hash o res.Hash
-      const mCid = (res as any)?.data?.Hash || (res as any)?.Hash;
-      if (!mCid) throw new Error("Error al obtener CID de metadata");
+      console.log('📤 Subiendo metadata pública:', { title, size: jsonStr.length });
+      
+      const response = await lh.upload([blob], apiKey, {
+        cidVersion: 1,
+      });
+      
+      const mCid = LighthouseService.extractCid(response?.data ?? response);
+      
+      if (!mCid) {
+        throw new Error("Error al obtener CID de metadata");
+      }
+      
+      console.log('✅ Metadata pública subida:', mCid);
+      console.log('🔗 URL pública:', LighthouseService.gatewayUrl(mCid));
 
       return mCid;
     } catch (err) {

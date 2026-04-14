@@ -1,17 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-// IMPORTANTE: Asegúrate de que la ruta a tu hook useWallet sea correcta.
 import { useWallet } from "@/hooks/useWallet"; 
 import { AudioFingerprintService } from "@/services/AudioFingerprintService";
 import { runCatalogAuthenticityCheck } from "@/services/runCatalogCheck";
-import { IPFSUploadForm } from "@/components/IPFSUploadForm"; // Se usa el nuevo componente
+import { IPFSUploadForm } from "@/components/IPFSUploadForm";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Upload,
   FileAudio,
   Search,
   Lock,
@@ -63,9 +61,7 @@ function StepIndicator({
 }
 
 export const FingerprintUploader = () => {
-  // ✅ CORRECCIÓN: Se quitó signMessage de usePrivy
   const { user, logout, authenticated, ready } = usePrivy();
-  // ✅ CORRECCIÓN: Se agregó el hook useWallet
   const { address } = useWallet(); 
   const audioRef = useRef<HTMLAudioElement>(null);
 
@@ -107,8 +103,7 @@ export const FingerprintUploader = () => {
     try {
       setLoading(true);
       setStatus("Generando huella digital...");
-      const fp =
-        await AudioFingerprintService.getInstance().generateFingerprint(file);
+      const fp = await AudioFingerprintService.getInstance().generateFingerprint(file);
       setFpResult(fp);
       setStatus("Escaneando bases de datos globales...");
       const check = await runCatalogAuthenticityCheck(
@@ -142,6 +137,12 @@ export const FingerprintUploader = () => {
     : null;
   const catalogScore = catalogReport?.catalogMatchScore ?? 0;
   const isHighRisk = catalogScore >= 80;
+  
+  // Determinar autenticidad para el registro
+  let authenticityScore = 0;
+  if (catalogScore >= 80) authenticityScore = 2; // Alto riesgo
+  else if (catalogScore >= 45) authenticityScore = 1; // Riesgo medio
+  else authenticityScore = 0; // Bajo riesgo
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -221,7 +222,7 @@ export const FingerprintUploader = () => {
                   <div className="mt-4 flex items-center gap-2">
                     <XCircle className="h-3.5 w-3.5 text-red-400" />
                     <p className="font-mono text-[11px] font-bold uppercase text-red-400">
-                      Registro bloqueado — Coincidencia alta
+                      Coincidencia alta detectada
                     </p>
                   </div>
                 )}
@@ -229,7 +230,7 @@ export const FingerprintUploader = () => {
                 {/* MusicBrainz matches */}
                 {catalogReport.matches.length > 0 && (
                   <div className="mt-5 space-y-2">
-                    <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-red-400">
+                    <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-blue-400">
                       Coincidencias en MusicBrainz
                     </p>
                     {catalogReport.matches.slice(0, 5).map((m) => (
@@ -382,11 +383,11 @@ export const FingerprintUploader = () => {
 
               <Button
                 onClick={handleAnalyze}
-                disabled={loading || !file || currentStep !== 0}
+                disabled={loading || !file}
                 className="mt-3 w-full"
                 size="lg"
               >
-                {loading && currentStep === 0 ? (
+                {loading ? (
                   <>
                     <motion.div
                       animate={{ rotate: 360 }}
@@ -395,6 +396,7 @@ export const FingerprintUploader = () => {
                         repeat: Infinity,
                         ease: "linear",
                       }}
+                      className="mr-2"
                     >
                       <Search className="h-4 w-4" />
                     </motion.div>
@@ -402,15 +404,15 @@ export const FingerprintUploader = () => {
                   </>
                 ) : (
                   <>
-                    <Search className="h-4 w-4" />
+                    <Search className="mr-2 h-4 w-4" />
                     Analizar Originalidad
                   </>
                 )}
               </Button>
             </div>
 
-            {/* ✅ CORRECCIÓN: Se reemplazó el botón manual y RegisterWorkButton por IPFSUploadForm */}
-            {currentStep === 1 && fpResult && !isHighRisk && (
+            {/* ✅ CORRECCIÓN: Mostrar IPFSUploadForm SIEMPRE que tengamos fpResult */}
+            {currentStep === 1 && fpResult && (
               <AnimatePresence>
                 <motion.div
                   initial={{ opacity: 0, y: 12 }}
@@ -420,14 +422,14 @@ export const FingerprintUploader = () => {
                     fingerprint={fpResult}
                     audioFile={file!}
                     ownerAddress={address ?? ""}
-                    authenticityScore={catalogScore}
-                    // onUploadSuccess={() => setCurrentStep(2)} // ← Ajusta según cómo IPFSUploadForm maneje el éxito si es necesario
+                    authenticityScore={authenticityScore}
+                    catalogReport={catalogReport || undefined}
                   />
                 </motion.div>
               </AnimatePresence>
             )}
 
-            {/* Success state (Dejé el step 3 en caso de que lo necesites después del IPFSUploadForm) */}
+            {/* Success state */}
             <AnimatePresence>
               {currentStep === 3 && (
                 <motion.div

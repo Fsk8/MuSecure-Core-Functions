@@ -19,6 +19,26 @@ export default defineConfig({
   },
   server: { 
     host: true,
+    // ✨ AGREGADO: Proxy para IPFS (Lighthouse)
+    proxy: {
+      '/ipfs-proxy': {
+        target: 'https://gateway.lighthouse.storage',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/ipfs-proxy/, ''),
+        secure: false,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('proxy error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('Sending Request to the Target:', req.method, req.url);
+          });
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
+          });
+        },
+      },
+    },
     // Dejamos vacío para que el Service Worker (public/sw.js) maneje los headers de seguridad
     headers: {} 
   },
