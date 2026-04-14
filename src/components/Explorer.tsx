@@ -1,5 +1,5 @@
 /**
- * MuSecure – Explorer (Versión FINAL CON PRIORIDAD DE VERSIONES)
+ * MuSecure – Explorer (Versión FINAL CON SOPORTE MÓVIL)
  * - Filtra solo obras públicas con metadata (para demo limpia)
  * - Filtra solo archivos de audio válidos (por extensión)
  * - Mantiene obras encriptadas (sin extensión)
@@ -9,7 +9,7 @@
  * - PRIORIZA la versión con releaseId (portada) sobre las antiguas
  * - PRIORIZA la versión más reciente si todo lo demás es igual
  * - Badges "MB Verified" vs "Original"
- * - Muestra portada de Cover Art Archive (con fallback profesional)
+ * - Muestra portada de Cover Art Archive con fallback para móvil
  */
 
 import { useEffect, useState } from "react";
@@ -36,9 +36,20 @@ interface MBInfo {
   releaseTitle?: string;
 }
 
+// ✨ Función mejorada con múltiples fuentes de portada
 function getCoverArtUrl(releaseId: string | null | undefined): string | null {
   if (!releaseId) return null;
+  // Cover Art Archive (primera opción)
   return `https://coverartarchive.org/release/${releaseId}/front-500`;
+}
+
+// URLs alternativas para fallback
+function getAlternativeCoverUrls(releaseId: string): string[] {
+  return [
+    `https://coverartarchive.org/release/${releaseId}/front-250`,
+    `https://coverartarchive.org/release/${releaseId}/front`,
+    `https://musicbrainz.org/release/${releaseId}/cover-art`,
+  ];
 }
 
 interface WorkCard {
@@ -78,6 +89,54 @@ function CardSkeleton() {
         <Skeleton className="h-12 w-full rounded-xl" />
       </div>
     </Card>
+  );
+}
+
+// ✨ Componente de imagen con fallback progresivo
+function CoverImage({ releaseId, title, onFinalError }: { 
+  releaseId: string; 
+  title: string;
+  onFinalError: () => void;
+}) {
+  const [currentUrlIndex, setCurrentUrlIndex] = useState(0);
+  const [errorCount, setErrorCount] = useState(0);
+  
+  const urls = [
+    getCoverArtUrl(releaseId)!,
+    ...getAlternativeCoverUrls(releaseId)
+  ];
+  
+  const handleError = () => {
+    if (currentUrlIndex < urls.length - 1) {
+      // Intentar con la siguiente URL
+      setCurrentUrlIndex(prev => prev + 1);
+      setErrorCount(prev => prev + 1);
+      console.log(`🔄 Fallback a URL alternativa ${currentUrlIndex + 1}/${urls.length} para ${title}`);
+    } else {
+      // Todas las URLs fallaron
+      console.log(`❌ Todas las URLs fallaron para ${title}`);
+      onFinalError();
+    }
+  };
+  
+  return (
+    <div className="flex items-center justify-center p-4 bg-black/20">
+      <img
+        src={urls[currentUrlIndex]}
+        alt={`Portada de ${title}`}
+        className="h-48 w-full object-contain"
+        onError={handleError}
+        crossOrigin="anonymous"
+        loading="lazy"
+      />
+      {errorCount > 0 && errorCount < urls.length && (
+        <div className="absolute bottom-1 right-1 bg-black/50 rounded-full px-2 py-0.5">
+          <p className="font-mono text-[8px] text-zinc-400">
+            Intentando {errorCount}/{urls.length - 1}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -425,18 +484,15 @@ export const Explorer = () => {
                 )}
               </div>
 
-              {/* ✨ PORTADA - MÁS GRANDE Y CON object-contain */}
+              {/* ✨ PORTADA CON FALLBACK PARA MÓVIL */}
               {work.isVerified ? (
-                <div className="mb-4 overflow-hidden rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-blue-600/5">
-                  {coverUrl && !hasImageError ? (
-                    <div className="flex items-center justify-center p-4 bg-black/20">
-                      <img
-                        src={coverUrl}
-                        alt={`Portada de ${work.title}`}
-                        className="h-48 w-full object-contain"
-                        onError={() => handleImageError(work.audioCid)}
-                      />
-                    </div>
+                <div className="mb-4 overflow-hidden rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-blue-600/5 relative">
+                  {work.mbInfo?.releaseId && !hasImageError ? (
+                    <CoverImage
+                      releaseId={work.mbInfo.releaseId}
+                      title={work.title}
+                      onFinalError={() => handleImageError(work.audioCid)}
+                    />
                   ) : (
                     <div className="h-48 w-full flex flex-col items-center justify-center">
                       <Music className="h-12 w-12 text-blue-400/60 mb-2" />
