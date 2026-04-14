@@ -1,8 +1,12 @@
 /**
- * MuSecure – Explorer (Versión FINAL - Con deduplicación)
- * - Deduplica audios por CID
- * - Prioriza entradas con metadata vinculada
- * - Filtra JSONs por MIME type y extensión
+ * MuSecure – Explorer (Versión FINAL COMPLETA)
+ * - Filtra solo archivos de audio válidos (por extensión)
+ * - Mantiene obras encriptadas (sin extensión)
+ * - Excluye CIDs problemáticos que fuerzan descarga
+ * - Deduplica por CID
+ * - Deduplica por título + artista
+ * - Prioriza la mejor versión de cada obra
+ * - Badges "MB Verified" vs "Original"
  */
 
 import { useEffect, useState } from "react";
@@ -39,6 +43,18 @@ interface WorkCard {
   hasMetadata: boolean;
 }
 
+// ✨ Extensiones de audio válidas
+const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.flac', '.ogg', '.aac', '.m4a', '.opus', '.webm', '.mpeg'];
+
+// ✨ CIDs problemáticos que fuerzan descarga (excluir)
+const EXCLUDED_CIDS = [
+  'bafybeig3gauun6xlp4r66rdjo5ye4mdztn54b6anyo3yt4piwy3snaawhy', // Condenado problemático
+  'bafybeiaiwsqeqtfuwt5ogr72q6yyqfkqw3cpmusfbgu4ulaha4upawjabi', // Afroman problemático
+  'bafybeia5t43wnb3rn6rig4lrcbpcchvmbbk5iavh3mbpka4kdli3frqdvy', // Bosque Guía problemático
+  'bafybeib2l2lm6uq4rcvz5pb5f3ecmjaesc44pgo2ge3zg5on36bz26mvle', // Blues de tierra problemático
+  'bafybeihygixd32wmzy65hmyhrc7hnvnjqjz3tinrjmtq5rp7xu5uypm3wm', // Otro problemático
+];
+
 function CardSkeleton() {
   return (
     <Card className="flex flex-col gap-4">
@@ -72,18 +88,41 @@ export const Explorer = () => {
         console.log('═══════════════════════════════════════');
         console.log(`📦 TOTAL ARCHIVOS: ${files.length}`);
 
-        // Separar audios y JSONs
+        // ✨ FILTRO MEJORADO v2: Excluir octet-stream que no son encriptados reales
         const audioFiles = files.filter((f: any) => {
-          const mimeType = f.mimeType?.toLowerCase() || '';
           const fileName = f.fileName.toLowerCase();
+          const mimeType = f.mimeType?.toLowerCase() || '';
           
+          // 🚫 Excluir CIDs problemáticos
+          if (EXCLUDED_CIDS.includes(f.cid)) {
+            console.log(`🚫 Excluyendo CID problemático: ${f.cid} (${fileName})`);
+            return false;
+          }
+          
+          // Excluir JSONs
           if (fileName.endsWith('.json')) return false;
           if (mimeType === 'application/json') return false;
+          
+          // Excluir blobs/text que son metadatos (CIDs que empiezan con bafkrei)
           if (fileName === 'blob' || fileName === 'text') {
             if (f.cid?.startsWith('bafkrei')) return false;
           }
           
-          return true;
+          // ✨ Incluir si tiene extensión de audio válida
+          if (AUDIO_EXTENSIONS.some(ext => fileName.endsWith(ext))) {
+            return true;
+          }
+          
+          // ✨ Para octet-stream: solo incluir si NO tiene extensión (encriptados reales)
+          if (mimeType === 'application/octet-stream') {
+            // Si no tiene extensión, probablemente es encriptado (incluir)
+            if (!fileName.includes('.')) {
+              return true;
+            }
+          }
+          
+          // Excluir el resto
+          return false;
         });
 
         const metadataJsons = files.filter((f: any) => {
@@ -135,7 +174,6 @@ export const Explorer = () => {
         for (const audio of audioFiles) {
           const existing = audioMap.get(audio.cid);
           
-          // Si no existe, o si la nueva entrada tiene mejor nombre (no es blob/text)
           if (!existing) {
             audioMap.set(audio.cid, audio);
           } else {
@@ -150,7 +188,7 @@ export const Explorer = () => {
         }
         
         const dedupedAudioFiles = Array.from(audioMap.values());
-        console.log(`🎵 AUDIOS (deduplicados): ${dedupedAudioFiles.length}`);
+        console.log(`🎵 AUDIOS (deduplicados por CID): ${dedupedAudioFiles.length}`);
 
         // Construir WorkCards
         const cards: WorkCard[] = dedupedAudioFiles.map((audio: any) => {
@@ -207,15 +245,49 @@ export const Explorer = () => {
           };
         });
 
-        console.log(`📊 RESUMEN: ${cards.filter(c => c.isVerified).length} MB Verified de ${cards.length} total`);
+        console.log(`📊 Cards antes de deduplicar por título: ${cards.length}`);
+        console.log(`📊 MB Verified antes de deduplicar: ${cards.filter(c => c.isVerified).length}`);
 
-        cards.sort((a, b) => {
+        // ✨ NUEVO: Deduplicar por título + artista
+        const uniqueCards = new Map<string, WorkCard>();
+        
+        for (const card of cards) {
+          // Crear clave única: título + artista (normalizados)
+          const key = `${card.title.toLowerCase().trim()}__${card.artist.toLowerCase().trim()}`;
+          
+          const existing = uniqueCards.get(key);
+          
+          if (!existing) {
+            uniqueCards.set(key, card);
+          } else {
+            // Priorizar: con metadata > sin metadata
+            if (card.hasMetadata && !existing.hasMetadata) {
+              uniqueCards.set(key, card);
+            }
+            // Priorizar: verificado > no verificado
+            else if (card.isVerified && !existing.isVerified) {
+              uniqueCards.set(key, card);
+            }
+            // Priorizar: nombre descriptivo > blob/text
+            else if (!card.fileName.includes('blob') && !card.fileName.includes('text') &&
+                     (existing.fileName.includes('blob') || existing.fileName.includes('text'))) {
+              uniqueCards.set(key, card);
+            }
+          }
+        }
+        
+        const finalCards = Array.from(uniqueCards.values());
+        
+        console.log(`📊 RESUMEN FINAL: ${finalCards.filter(c => c.isVerified).length} MB Verified de ${finalCards.length} total`);
+        console.log('═══════════════════════════════════════');
+
+        finalCards.sort((a, b) => {
           if (a.isVerified && !b.isVerified) return -1;
           if (!a.isVerified && b.isVerified) return 1;
           return a.title.localeCompare(b.title);
         });
 
-        setWorks(cards);
+        setWorks(finalCards);
       } catch (err) {
         console.error("[Explorer] Error:", err);
       } finally {
