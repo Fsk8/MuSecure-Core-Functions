@@ -3,11 +3,7 @@
  *
  * Si hay match de MB → autocompletar título/artista y bloquear inputs
  * Si no → inputs editables normalmente
- *
- * NO renombramos el audio con metadataCid__ porque:
- * - El JSON ya contiene animation_url: ipfs://audioCid
- * - El Explorer cruza por ese campo directamente
- * - Renombrar añade complejidad sin beneficio real
+ * El releaseId ya viene en catalogReport desde el análisis
  */
 
 import { useState } from "react";
@@ -85,21 +81,30 @@ export function IPFSUploadForm({
         encrypt ? signMessage ?? undefined : undefined
       );
       setAudioCid(audioResult.cid);
+      console.log("✅ Audio subido:", audioResult.cid);
 
       // ── 2. Subir metadata ERC-721 JSON ────────────────────────────────────
-      // El metadataCid es el que va al contrato. Incluye mbInfo si hay match.
       setStage("uploading-metadata");
       setStageMsg("Subiendo metadata a IPFS...");
 
+      // ✨ releaseId YA VIENE en mbMatch desde catalogReport (obtenido en el análisis)
       const mbInfo = hasMBMatch && mbMatch
         ? {
             recordingId: mbMatch.recordingId,
+            releaseId: mbMatch.releaseId || null,
             title: mbMatch.title ?? title,
             artist: mbMatch.artist ?? artist,
             scorePercent: mbMatch.scorePercent,
             releaseTitle: mbMatch.releaseTitle,
           }
         : undefined;
+
+      if (mbInfo) {
+        console.log("🎵 MB Info guardada:", { 
+          ...mbInfo, 
+          releaseId: mbInfo.releaseId ? mbInfo.releaseId.slice(0, 8) + "..." : null 
+        });
+      }
 
       const mCid = await lh.uploadMetadata(
         title.trim(),
@@ -110,6 +115,7 @@ export function IPFSUploadForm({
         mbInfo
       );
       setMetadataCid(mCid);
+      console.log("✅ Metadata subida:", mCid);
 
       lh.saveUploadRecord({
         metadataCid: mCid,
@@ -124,10 +130,18 @@ export function IPFSUploadForm({
       setStage("done");
       setStageMsg("");
     } catch (e: unknown) {
+      console.error("❌ Error en upload:", e);
       const msg = e instanceof Error ? e.message : "Error desconocido";
       setError(msg);
       setStage("error");
     }
+  };
+
+  const handleReset = () => {
+    setStage("idle");
+    setAudioCid("");
+    setMetadataCid("");
+    setError(null);
   };
 
   // ── Post-upload ───────────────────────────────────────────────────────────
@@ -174,7 +188,7 @@ export function IPFSUploadForm({
             </div>
           )}
 
-          <Button variant="outline" onClick={() => { setStage("idle"); setAudioCid(""); setMetadataCid(""); }} className="w-full">
+          <Button variant="outline" onClick={handleReset} className="w-full">
             Subir Otra Obra
           </Button>
         </Card>
@@ -204,6 +218,11 @@ export function IPFSUploadForm({
             {mbMatch.releaseTitle && <span className="text-zinc-500"> · {mbMatch.releaseTitle}</span>}
           </p>
           <p className="mt-1 font-mono text-[10px] text-blue-400/60">Score: {mbMatch.scorePercent}%</p>
+          {mbMatch.releaseId && (
+            <p className="mt-1 font-mono text-[9px] text-blue-400/40">
+              🎵 Portada disponible
+            </p>
+          )}
           {mbMatch.recordingId && (
             <a
               href={`https://musicbrainz.org/recording/${mbMatch.recordingId}`}

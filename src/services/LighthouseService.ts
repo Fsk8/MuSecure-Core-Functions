@@ -152,7 +152,7 @@ export class LighthouseService {
     audioCid: string,
     isEncrypted: boolean,
     mimeType: string,
-    mbInfo?: { recordingId: string; title: string; artist: string; scorePercent: number; releaseTitle?: string }
+    mbInfo?: { recordingId: string; title: string; artist: string; scorePercent: number; releaseTitle?: string; releaseId?: string | null; }
   ): Promise<string> {
     try {
       const lh = await this.getLh();

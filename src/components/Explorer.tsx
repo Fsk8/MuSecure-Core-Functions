@@ -1,5 +1,6 @@
 /**
- * MuSecure – Explorer (Versión FINAL COMPLETA)
+ * MuSecure – Explorer (Versión FINAL CON PORTADAS)
+ * - Filtra solo obras públicas con metadata (para demo limpia)
  * - Filtra solo archivos de audio válidos (por extensión)
  * - Mantiene obras encriptadas (sin extensión)
  * - Excluye CIDs problemáticos que fuerzan descarga
@@ -7,6 +8,7 @@
  * - Deduplica por título + artista
  * - Prioriza la mejor versión de cada obra
  * - Badges "MB Verified" vs "Original"
+ * - Muestra portada de Cover Art Archive (con fallback profesional)
  */
 
 import { useEffect, useState } from "react";
@@ -21,15 +23,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "motion/react";
 import {
   Music, ExternalLink, CheckCircle2, Sparkles,
-  Headphones, Lock, Globe,
+  Headphones, Lock, Globe, ImageOff,
 } from "lucide-react";
 
 interface MBInfo {
   recordingId: string;
+  releaseId?: string | null;  // ✨ PARA COVER ART ARCHIVE
   title: string;
   artist: string;
   scorePercent: number;
   releaseTitle?: string;
+}
+
+function getCoverArtUrl(releaseId: string | null | undefined): string | null {
+  if (!releaseId) return null;
+  return `https://coverartarchive.org/release/${releaseId}/front-250`;
 }
 
 interface WorkCard {
@@ -48,11 +56,11 @@ const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.flac', '.ogg', '.aac', '.m4a', '.opu
 
 // ✨ CIDs problemáticos que fuerzan descarga (excluir)
 const EXCLUDED_CIDS = [
-  'bafybeig3gauun6xlp4r66rdjo5ye4mdztn54b6anyo3yt4piwy3snaawhy', // Condenado problemático
-  'bafybeiaiwsqeqtfuwt5ogr72q6yyqfkqw3cpmusfbgu4ulaha4upawjabi', // Afroman problemático
-  'bafybeia5t43wnb3rn6rig4lrcbpcchvmbbk5iavh3mbpka4kdli3frqdvy', // Bosque Guía problemático
-  'bafybeib2l2lm6uq4rcvz5pb5f3ecmjaesc44pgo2ge3zg5on36bz26mvle', // Blues de tierra problemático
-  'bafybeihygixd32wmzy65hmyhrc7hnvnjqjz3tinrjmtq5rp7xu5uypm3wm', // Otro problemático
+  'bafybeig3gauun6xlp4r66rdjo5ye4mdztn54b6anyo3yt4piwy3snaawhy',
+  'bafybeiaiwsqeqtfuwt5ogr72q6yyqfkqw3cpmusfbgu4ulaha4upawjabi',
+  'bafybeia5t43wnb3rn6rig4lrcbpcchvmbbk5iavh3mbpka4kdli3frqdvy',
+  'bafybeib2l2lm6uq4rcvz5pb5f3ecmjaesc44pgo2ge3zg5on36bz26mvle',
+  'bafybeihygixd32wmzy65hmyhrc7hnvnjqjz3tinrjmtq5rp7xu5uypm3wm',
 ];
 
 function CardSkeleton() {
@@ -62,6 +70,7 @@ function CardSkeleton() {
         <Skeleton className="h-5 w-32" />
         <Skeleton className="h-5 w-20" />
       </div>
+      <Skeleton className="h-40 w-full rounded-xl" />
       <Skeleton className="h-5 w-3/4" />
       <Skeleton className="h-3 w-1/2" />
       <div className="mt-auto pt-4">
@@ -74,6 +83,7 @@ function CardSkeleton() {
 export const Explorer = () => {
   const [works, setWorks] = useState<WorkCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
   const { ready, authenticated, login } = usePrivy();
   const { address, signMessage } = useWallet();
@@ -115,13 +125,11 @@ export const Explorer = () => {
           
           // ✨ Para octet-stream: solo incluir si NO tiene extensión (encriptados reales)
           if (mimeType === 'application/octet-stream') {
-            // Si no tiene extensión, probablemente es encriptado (incluir)
             if (!fileName.includes('.')) {
               return true;
             }
           }
           
-          // Excluir el resto
           return false;
         });
 
@@ -177,7 +185,6 @@ export const Explorer = () => {
           if (!existing) {
             audioMap.set(audio.cid, audio);
           } else {
-            // Preferir entradas con nombres descriptivos sobre "blob" o "text"
             const isExistingGeneric = existing.fileName === 'blob' || existing.fileName === 'text';
             const isNewGeneric = audio.fileName === 'blob' || audio.fileName === 'text';
             
@@ -217,11 +224,22 @@ export const Explorer = () => {
           let mbInfo: MBInfo | undefined;
           if (mbAttr?.value) {
             try {
-              mbInfo = typeof mbAttr.value === "string"
+              const parsed = typeof mbAttr.value === "string"
                 ? JSON.parse(mbAttr.value)
                 : mbAttr.value;
-            } catch {
-              // Ignorar error
+              
+              mbInfo = {
+                recordingId: parsed.recordingId,
+                releaseId: parsed.releaseId || null,  // ✨ EXTRAER releaseId
+                title: parsed.title,
+                artist: parsed.artist,
+                scorePercent: parsed.scorePercent,
+                releaseTitle: parsed.releaseTitle,
+              };
+              
+              console.log(`🎯 MB Info para "${meta.name}": releaseId=${mbInfo.releaseId}`);
+            } catch (e) {
+              console.warn('Error parsing MB info:', e);
             }
           }
 
@@ -252,24 +270,17 @@ export const Explorer = () => {
         const uniqueCards = new Map<string, WorkCard>();
         
         for (const card of cards) {
-          // Crear clave única: título + artista (normalizados)
           const key = `${card.title.toLowerCase().trim()}__${card.artist.toLowerCase().trim()}`;
-          
           const existing = uniqueCards.get(key);
           
           if (!existing) {
             uniqueCards.set(key, card);
           } else {
-            // Priorizar: con metadata > sin metadata
             if (card.hasMetadata && !existing.hasMetadata) {
               uniqueCards.set(key, card);
-            }
-            // Priorizar: verificado > no verificado
-            else if (card.isVerified && !existing.isVerified) {
+            } else if (card.isVerified && !existing.isVerified) {
               uniqueCards.set(key, card);
-            }
-            // Priorizar: nombre descriptivo > blob/text
-            else if (!card.fileName.includes('blob') && !card.fileName.includes('text') &&
+            } else if (!card.fileName.includes('blob') && !card.fileName.includes('text') &&
                      (existing.fileName.includes('blob') || existing.fileName.includes('text'))) {
               uniqueCards.set(key, card);
             }
@@ -278,16 +289,23 @@ export const Explorer = () => {
         
         const finalCards = Array.from(uniqueCards.values());
         
-        console.log(`📊 RESUMEN FINAL: ${finalCards.filter(c => c.isVerified).length} MB Verified de ${finalCards.length} total`);
+        console.log(`📊 Antes de filtrar para demo: ${finalCards.length} obras`);
+        
+        // ✨ FILTRO PARA DEMO: Solo obras públicas con metadata
+        const demoCards = finalCards.filter(card => 
+          card.hasMetadata && !card.isEncrypted
+        );
+        
+        console.log(`🎯 DEMO FINAL: ${demoCards.filter(c => c.isVerified).length} MB Verified de ${demoCards.length} total`);
         console.log('═══════════════════════════════════════');
 
-        finalCards.sort((a, b) => {
+        demoCards.sort((a, b) => {
           if (a.isVerified && !b.isVerified) return -1;
           if (!a.isVerified && b.isVerified) return 1;
           return a.title.localeCompare(b.title);
         });
 
-        setWorks(finalCards);
+        setWorks(demoCards);
       } catch (err) {
         console.error("[Explorer] Error:", err);
       } finally {
@@ -297,6 +315,10 @@ export const Explorer = () => {
 
     loadWorks();
   }, []);
+
+  const handleImageError = (audioCid: string) => {
+    setImageErrors(prev => new Set(prev).add(audioCid));
+  };
 
   if (!ready || loading) {
     return (
@@ -313,7 +335,7 @@ export const Explorer = () => {
           <Music className="h-7 w-7 text-zinc-600" />
         </div>
         <p className="font-mono text-xs uppercase tracking-wider text-zinc-600">
-          No hay obras en IPFS todavía
+          No hay obras públicas todavía
         </p>
       </motion.div>
     );
@@ -330,6 +352,9 @@ export const Explorer = () => {
           ? "hover:border-blue-500/30 hover:shadow-blue-500/10"
           : "hover:border-emerald-500/20 hover:shadow-emerald-500/5";
 
+        const coverUrl = getCoverArtUrl(work.mbInfo?.releaseId);
+        const hasImageError = imageErrors.has(work.audioCid);
+
         return (
           <motion.div
             key={`${work.audioCid}-${index}`}
@@ -338,7 +363,7 @@ export const Explorer = () => {
             transition={{ duration: 0.4, delay: index * 0.05 }}
           >
             <Card className={`group flex h-full flex-col transition-all hover:shadow-lg ${borderColor}`}>
-              <div className="mb-6 flex items-center justify-between flex-wrap gap-2">
+              <div className="mb-4 flex items-center justify-between flex-wrap gap-2">
                 <Badge variant={work.isEncrypted ? "default" : "secondary"}>
                   {work.isEncrypted
                     ? <><Lock className="mr-1 h-2.5 w-2.5" />Privado</>
@@ -358,11 +383,40 @@ export const Explorer = () => {
                 )}
               </div>
 
+              {/* ✨ PORTADA - CORREGIDA */}
+              {work.isVerified ? (
+                <div className="mb-4 overflow-hidden rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-blue-600/5">
+                  {coverUrl && !hasImageError ? (
+                    <img
+                      src={coverUrl}
+                      alt={`Portada de ${work.title}`}
+                      className="h-40 w-full object-cover"
+                      onError={() => handleImageError(work.audioCid)}
+                    />
+                  ) : (
+                    <div className="h-40 w-full flex flex-col items-center justify-center">
+                      <Music className="h-10 w-10 text-blue-400/60 mb-2" />
+                      <p className="font-mono text-[10px] uppercase tracking-wider text-blue-400/60">MB Verified</p>
+                      {work.mbInfo?.scorePercent && (
+                        <p className="font-display text-2xl font-bold text-blue-400 mt-1">{work.mbInfo.scorePercent}%</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mb-4 overflow-hidden rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-emerald-600/5">
+                  <div className="h-40 w-full flex flex-col items-center justify-center">
+                    <Music className="h-10 w-10 text-emerald-400/60 mb-2" />
+                    <p className="font-mono text-[10px] uppercase tracking-wider text-emerald-400/60">Original</p>
+                  </div>
+                </div>
+              )}
+
               <h3 className="truncate font-display text-base font-bold uppercase tracking-tight text-white">
                 {work.title}
               </h3>
 
-              <p className={`mt-1 mb-4 truncate font-mono text-[11px] ${
+              <p className={`mt-1 mb-3 truncate font-mono text-[11px] ${
                 work.isVerified ? "text-blue-400/70" : "text-emerald-500/70"
               }`}>
                 {work.artist}
@@ -373,9 +427,6 @@ export const Explorer = () => {
                   <p className="font-mono text-[9px] uppercase tracking-wider text-blue-400/60">
                     ✓ Verificado en MusicBrainz
                   </p>
-                  <p className="font-mono text-[9px] text-blue-400/60">
-                    Score: {work.mbInfo.scorePercent}%
-                  </p>
                   <a
                     href={`https://musicbrainz.org/recording/${work.mbInfo.recordingId}`}
                     target="_blank"
@@ -385,12 +436,6 @@ export const Explorer = () => {
                     Ver en MusicBrainz <ExternalLink className="h-2.5 w-2.5" />
                   </a>
                 </div>
-              )}
-
-              {!work.hasMetadata && (
-                <p className="mb-4 font-mono text-[9px] text-zinc-600 italic">
-                  Obra legacy — sin metadata extendida
-                </p>
               )}
 
               <div className="mt-auto">

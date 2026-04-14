@@ -23,9 +23,99 @@ function pickReleaseGroupType(rec: AcoustIdRecording): string | undefined {
 }
 
 /**
+ * Obtiene releaseId desde la API de MusicBrainz
+ */
+async function fetchReleaseIdFromMusicBrainz(recordingId: string): Promise<string | null> {
+  try {
+    // Rate limiting: 1 segundo entre llamadas (MusicBrainz permite 1 req/seg)
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const url = `https://musicbrainz.org/ws/2/recording/${recordingId}?inc=releases&fmt=json`;
+    console.log(`🔍 [MusicBrainz] Buscando releases para recording: ${recordingId}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'MuSecure/1.0 (https://musecure.app)',
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      console.warn(`⚠️ MusicBrainz API error: ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    const releases = data.releases || [];
+    
+    console.log(`📋 [MusicBrainz] ${releases.length} releases encontrados`);
+    
+    // Priorizar releases oficiales y tipo Album
+    const officialRelease = releases.find((r: any) => 
+      r.status === 'Official' && r.release_group?.primary_type === 'Album'
+    );
+    
+    if (officialRelease?.id) {
+      console.log(`✅ [MusicBrainz] Release oficial (Album): ${officialRelease.id}`);
+      return officialRelease.id;
+    }
+    
+    // Fallback: cualquier release oficial
+    const anyOfficial = releases.find((r: any) => r.status === 'Official');
+    if (anyOfficial?.id) {
+      console.log(`✅ [MusicBrainz] Release oficial: ${anyOfficial.id}`);
+      return anyOfficial.id;
+    }
+    
+    // Último fallback: cualquier release con ID
+    const anyRelease = releases.find((r: any) => r.id);
+    if (anyRelease?.id) {
+      console.log(`✅ [MusicBrainz] Release (fallback): ${anyRelease.id}`);
+      return anyRelease.id;
+    }
+    
+    console.log(`❌ [MusicBrainz] No se encontró releaseId`);
+    return null;
+    
+  } catch (e) {
+    console.warn('❌ [MusicBrainz] Error fetching releaseId:', e);
+    return null;
+  }
+}
+
+/**
+ * Extrae el releaseId para Cover Art Archive.
+ * AHORA CON LLAMADA A MUSICBRAINZ SI NO ESTÁ EN ACOUSTID
+ */
+async function pickReleaseId(rec: AcoustIdRecording): Promise<string | undefined> {
+  // 1. Intentar obtener de AcoustID
+  if (rec.releases && rec.releases.length > 0) {
+    const album = rec.releases.find((r: any) => r.releasegroup?.type === "Album" && r.id);
+    if (album?.id) {
+      console.log(`✅ [AcoustID] ReleaseId encontrado en AcoustID: ${album.id}`);
+      return album.id;
+    }
+    const first = rec.releases.find((r: any) => r.id);
+    if (first?.id) {
+      console.log(`✅ [AcoustID] ReleaseId encontrado en AcoustID (fallback): ${first.id}`);
+      return first.id;
+    }
+  }
+  
+  // 2. Si no, buscar en MusicBrainz usando recordingId
+  if (rec.id) {
+    console.log(`🔍 [AcoustID] No tiene releaseId, buscando en MusicBrainz...`);
+    const releaseId = await fetchReleaseIdFromMusicBrainz(rec.id);
+    if (releaseId) return releaseId;
+  }
+  
+  return undefined;
+}
+
+/**
  * Grabaciones MusicBrainz asociadas a la huella, ordenadas por score AcoustID.
  */
-function collectMatches(results: AcoustIdResult[]): CatalogMatchRow[] {
+async function collectMatches(results: AcoustIdResult[]): Promise<CatalogMatchRow[]> {
   const sorted = [...results].sort((a, b) => b.score - a.score);
   const byRecording = new Map<string, CatalogMatchRow>();
 
@@ -34,14 +124,20 @@ function collectMatches(results: AcoustIdResult[]): CatalogMatchRow[] {
     for (const rec of r.recordings ?? []) {
       const recordingId = rec.id;
       if (!recordingId) continue;
+      
+      // ✨ Obtener releaseId (con llamada a MusicBrainz si es necesario)
+      const releaseId = await pickReleaseId(rec);
+      
       const row: CatalogMatchRow = {
         recordingId,
         title: rec.title,
         artist: rec.artists?.map((a) => a.name).filter(Boolean).join(", "),
         releaseTitle: pickReleaseTitle(rec),
         releaseGroupType: pickReleaseGroupType(rec),
+        releaseId: releaseId || null, // ✨ AHORA SÍ VIENE CON releaseId
         scorePercent: pct,
       };
+      
       const prev = byRecording.get(recordingId);
       if (!prev || row.scorePercent > prev.scorePercent) {
         byRecording.set(recordingId, row);
@@ -72,9 +168,9 @@ function collectAcoustIdOnlyTracks(
   return out;
 }
 
-export function interpretAcoustIdLookup(
+export async function interpretAcoustIdLookup(
   json: AcoustIdLookupJson
-): CatalogAuthenticityReport {
+): Promise<CatalogAuthenticityReport> {
   if (json.status === "error") {
     const msg = json.error?.message ?? "Error AcoustID";
     return {
@@ -114,7 +210,9 @@ export function interpretAcoustIdLookup(
   const catalogMatchScore = Math.round(bestMatchScore * 100);
   const originalityScore = Math.round((1 - bestMatchScore) * 100);
   const registrationRisk = riskFromScore(bestMatchScore);
-  const matches = collectMatches(results);
+  
+  // ✨ AHORA collectMatches ES ASYNC y obtiene releaseId
+  const matches = await collectMatches(results);
   const acoustIdOnlyTracks = collectAcoustIdOnlyTracks(results);
 
   const summary =

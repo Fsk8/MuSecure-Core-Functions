@@ -1,8 +1,7 @@
 /**
  * MuSecure – services/runCatalogCheck.ts
  *
- * Revertido — Gemini añadió inyección de externalMatches que no hace nada útil.
- * interpretAcoustIdLookup ya extrae matches y acoustIdOnlyTracks correctamente.
+ * Actualizado: interpretAcoustIdLookup ahora es async y obtiene releaseId de MusicBrainz
  */
 
 import { generateChromaprintForAcoustId } from "@/services/chromaprintAcoustId";
@@ -10,7 +9,7 @@ import { lookupAcoustId } from "@/services/acoustidLookup";
 import { interpretAcoustIdLookup } from "@/services/authenticityFromAcoustId";
 import type { CatalogAuthenticityReport } from "@/types/acoustid";
 
-export type CatalogCheckStage = "chromaprint" | "acoustid" | "done";
+export type CatalogCheckStage = "chromaprint" | "acoustid" | "musicbrainz" | "done";
 
 export async function runCatalogAuthenticityCheck(
   file: File,
@@ -27,8 +26,10 @@ export async function runCatalogAuthenticityCheck(
   onStage?.("acoustid");
   const json = await lookupAcoustId({ client: clientKey, fingerprint, durationSec });
 
-  onStage?.("done");
-  const report = interpretAcoustIdLookup(json);
+  onStage?.("musicbrainz");
+  // ✨ interpretAcoustIdLookup ahora es async y obtiene releaseId de MusicBrainz
+  const report = await interpretAcoustIdLookup(json);
 
+  onStage?.("done");
   return { report, acoustIdFingerprint: fingerprint, durationSec };
 }

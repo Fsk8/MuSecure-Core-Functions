@@ -43,6 +43,7 @@ export interface CatalogAuthenticityReport {
 
 export interface CatalogMatchRow {
   recordingId: string;
+  releaseId?: string | null;
   title?: string;
   artist?: string;
   releaseTitle?: string;
