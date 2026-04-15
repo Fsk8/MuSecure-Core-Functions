@@ -5,6 +5,7 @@
  * CORREGIDO: uploadMetadata ahora usa upload() en lugar de uploadText()
  * para que los metadatos sean accesibles públicamente en IPFS.
  * MEJORADO: Sube metadatos con nombre descriptivo y tipo MIME correcto.
+ * PROXY: Usa /api/ipfs/ en producción para evitar CORS y rate limiting.
  */
 
 function getApiKey(): string {
@@ -262,6 +263,11 @@ export class LighthouseService {
   /** URL del gateway para metadata JSON y uso interno */
   static gatewayUrl(cid: string): string {
     if (!cid) return "";
+    // En producción, usar el proxy de Vercel para evitar CORS y rate limiting
+    if (!import.meta.env.DEV) {
+      return `/api/ipfs/${cid}`;
+    }
+    // En desarrollo, usar el gateway directo (o el proxy de Vite si lo tienes)
     return `https://gateway.lighthouse.storage/ipfs/${cid}`;
   }
 
@@ -275,6 +281,11 @@ export class LighthouseService {
       : mimeType.includes("wav") ? "wav"
       : mimeType.includes("aac") ? "aac"
       : "mp3";
+    
+    // En producción, usar el proxy de Vercel
+    if (!import.meta.env.DEV) {
+      return `/api/ipfs/${cid}?filename=audio.${ext}`;
+    }
     return `https://gateway.lighthouse.storage/ipfs/${cid}?filename=audio.${ext}`;
   }
 }

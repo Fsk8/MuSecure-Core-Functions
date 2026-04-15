@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/ipfs/:cid", "destination": "https://gateway.lighthouse.storage/ipfs/:cid" },
     { "source": "/api/cover/:releaseId", "destination": "https://coverartarchive.org/release/:releaseId/front-500" },
     { "source": "/api/musicbrainz/recording/:recordingId", "destination": "https://musicbrainz.org/ws/2/recording/:recordingId?inc=releases&fmt=json" },
     { "source": "/api/(.*)", "destination": "/api/$1" }
