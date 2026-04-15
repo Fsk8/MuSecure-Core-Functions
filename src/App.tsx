@@ -8,7 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { AnimatePresence, motion } from "motion/react";
-import { Shield, Upload, LayoutGrid, Wallet } from "lucide-react";
+import { Shield, Upload, LayoutGrid, Wallet, LogOut } from "lucide-react";
+
+// Importamos tu nuevo componente
+import { BalanceBadge } from "@/components/ui/balancebadge";
 
 function LoadingScreen() {
   return (
@@ -70,8 +73,9 @@ function EmptyState({
 }
 
 export default function App() {
-  const { ready, authenticated, user, login } = usePrivy();
+  const { ready, authenticated, user, login, logout } = usePrivy();
   const address = user?.wallet?.address;
+  
   const { airdropMessage } = useGasAirdrop(
     address || null,
     (user as any)?.isNewUser
@@ -84,7 +88,7 @@ export default function App() {
       {/* Radial glow behind header */}
       <div className="pointer-events-none fixed left-1/2 top-0 -z-10 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/[0.04] blur-3xl" />
 
-      <header className="border-b border-surface-border/50">
+      <header className="border-b border-surface-border/50 bg-background/50 backdrop-blur-md sticky top-0 z-50">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500 shadow-lg shadow-emerald-500/20">
@@ -100,16 +104,36 @@ export default function App() {
             </div>
           </div>
 
-          {authenticated && address && (
-            <div className="flex items-center gap-3">
-              <Badge variant="success">Conectado</Badge>
-              <div className="rounded-xl border border-surface-border bg-surface-raised px-4 py-2">
-                <span className="font-mono text-xs text-emerald-500">
-                  {address.slice(0, 6)}...{address.slice(-4)}
-                </span>
-              </div>
-            </div>
-          )}
+          <div className="flex items-center gap-4">
+            {authenticated && address ? (
+              <>
+                {/* 1. Visor de Saldo */}
+                <BalanceBadge address={address} />
+
+                {/* 2. Info de Wallet con Logout */}
+                <div className="flex items-center gap-2">
+                  <Badge variant="success" className="hidden sm:flex">Conectado</Badge>
+                  <div className="group relative flex items-center gap-3 rounded-xl border border-surface-border bg-surface-raised px-4 py-2 hover:border-red-500/30 transition-all">
+                    <span className="font-mono text-xs text-emerald-500">
+                      {address.slice(0, 6)}...{address.slice(-4)}
+                    </span>
+                    <button 
+                      onClick={logout}
+                      className="text-zinc-500 hover:text-red-400 transition-colors"
+                      title="Cerrar sesión"
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <Button onClick={login} size="sm" className="rounded-xl">
+                <Wallet className="mr-2 h-4 w-4" />
+                Conectar
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 
