@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { CheckCircle2, XCircle, Shield, Loader2, ExternalLink, Droplets } from "lucide-react";
 
 interface Props {
-  fingerprint: string; 
+  fingerprint: string;  // ✨ La prop se llama fingerprint (viene del padre)
   ipfsCid: string;
   authenticityScore: number;
   soulbound: boolean;
@@ -45,9 +45,9 @@ export function RegisterWorkButton({
   const handleRegister = async () => {
     if (!ipfsCid) return;
     
-    // Sincronizado con los nombres de useRegisterWork.ts
+    // ✨ Mapear fingerprint (prop) → fingerprintHash (parámetro esperado)
     const result = await registerWork({
-      fingerprintHash: fingerprint, 
+      fingerprintHash: fingerprint,
       ipfsCid: ipfsCid,
       authenticityScore: authenticityScore,
       soulbound,

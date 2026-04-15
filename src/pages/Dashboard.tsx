@@ -134,46 +134,6 @@ function extractAudioInfo(meta: AnyMetadata | undefined): {
   return { isEncrypted: false, audioCid: "", mimeType: "audio/mpeg" };
 }
 
-// Recuperar metadata desde localStorage
-function getLocalMetadata(tokenId: number, txHash: string): { metadata: AnyMetadata; audioCid: string } | null {
-  try {
-    const records = JSON.parse(localStorage.getItem('musecure:uploads') || '[]');
-    // Buscar por timestamp aproximado o por otros criterios
-    const record = records.find((r: any) => {
-      // Intentar match por fecha cercana (mismo día)
-      const recordDate = new Date(r.uploadedAt).toDateString();
-      // Aquí podrías agregar más lógica de matching
-      return true; // Temporal: devolver el primero que coincida en algo
-    });
-    
-    if (record) {
-      // Reconstruir metadata
-      const metadata: MuSecureMetadata = {
-        schemaVersion: "1.0",
-        title: record.title,
-        artist: record.artist,
-        createdAt: new Date(record.uploadedAt).toISOString(),
-        ownerAddress: record.ownerAddress,
-        fingerprint: { sha256: "", data: [], durationSec: 0, algorithm: "musecure-v1" },
-        encryptedAudio: {
-          ciphertextCid: record.audioCid,
-          encrypted: record.encrypted,
-          dataToEncryptHash: "",
-          accessConditions: null,
-          litNetwork: null,
-          originalFileName: "",
-          mimeType: "audio/mpeg",
-          originalSizeBytes: 0
-        }
-      };
-      return { metadata, audioCid: record.audioCid };
-    }
-  } catch (e) {
-    console.error("Error reading localStorage:", e);
-  }
-  return null;
-}
-
 export function Dashboard() {
   const { ready, authenticated, login } = usePrivy();
   const { address, signMessage } = useWallet();
@@ -295,8 +255,11 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (ready && authenticated && address) loadWorks(address);
-    else setWorks([]);
+    if (ready && authenticated && address) {
+      loadWorks(address);
+    } else {
+      setWorks([]);
+    }
   }, [ready, authenticated, address, loadWorks]);
 
   if (!ready || loading) return <DashboardSkeleton />;

@@ -51,7 +51,7 @@ const STEP_MESSAGES: Record<RegisterStep, string> = {
 export function useRegisterWork() {
   const [state, setState] = useState<RegisterState>({ step: "idle", message: "" });
 
-  // getProvider() usa useWallets internamente — funciona con cualquier tipo de wallet
+  // ✨ Obtener getProvider del hook unificado (funciona con Privy y MetaMask)
   const { getProvider, address } = useWallet();
 
   const set = (step: RegisterStep, extra?: Partial<RegisterState>) =>
