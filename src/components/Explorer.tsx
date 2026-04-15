@@ -1,5 +1,5 @@
 /**
- * MuSecure – Explorer (Versión FINAL CORREGIDA - VERCEL)
+ * MuSecure – Explorer (Versión FINAL CON CACHÉ Y RATE LIMITING)
  * - Filtra solo obras públicas con metadata (para demo limpia)
  * - Filtra solo archivos de audio válidos (por extensión)
  * - Mantiene obras encriptadas (sin extensión)
@@ -10,6 +10,8 @@
  * - PRIORIZA la versión más reciente si todo lo demás es igual
  * - Badges "MB Verified" vs "Original"
  * - Muestra portada con fallback elegante (placeholder si no hay imagen)
+ * - CACHÉ: Evita peticiones repetidas a metadatos que ya fallaron
+ * - RATE LIMITING: Procesa en lotes para no saturar Lighthouse
  */
 
 import { useEffect, useState } from "react";
@@ -71,6 +73,54 @@ const EXCLUDED_CIDS = [
   'bafybeib2l2lm6uq4rcvz5pb5f3ecmjaesc44pgo2ge3zg5on36bz26mvle',
   'bafybeihygixd32wmzy65hmyhrc7hnvnjqjz3tinrjmtq5rp7xu5uypm3wm',
 ];
+
+// ✨ CACHÉ PARA METADATOS
+const metadataCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutos
+const FAILED_CIDS = new Set<string>(); // CIDs que ya fallaron (404, 429, etc.)
+
+// ✨ Función para hacer fetch con caché y sin reintentar fallos
+async function fetchMetadataWithCache(cid: string, fileName: string): Promise<any | null> {
+  // Si ya falló antes, no reintentar (evita 429 repetidos)
+  if (FAILED_CIDS.has(cid)) {
+    console.log(`⏭️ Saltando ${fileName} (falló previamente)`);
+    return null;
+  }
+  
+  // Verificar caché
+  const cached = metadataCache.get(cid);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    console.log(`📦 Usando caché para ${fileName}`);
+    return cached.data;
+  }
+  
+  try {
+    const url = LighthouseService.gatewayUrl(cid);
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      // Si es 429, marcar como fallido y no reintentar
+      if (response.status === 429) {
+        console.warn(`⚠️ Rate limited para ${fileName}, no se reintentará`);
+        FAILED_CIDS.add(cid);
+      }
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const json = await response.json();
+    
+    // Guardar en caché
+    metadataCache.set(cid, { data: json, timestamp: Date.now() });
+    console.log(`✅ Metadata obtenida: ${fileName}`);
+    return json;
+    
+  } catch (e) {
+    console.warn(`❌ Metadata falló para ${fileName}:`, e);
+    // Marcar como fallido para no reintentar
+    FAILED_CIDS.add(cid);
+    return null;
+  }
+}
 
 function CardSkeleton() {
   return (
@@ -190,29 +240,47 @@ export const Explorer = () => {
         console.log(`🎵 AUDIOS (antes de deduplicar): ${audioFiles.length}`);
         console.log(`📄 METADATA JSONs: ${metadataJsons.length}`);
 
-        // Fetch de todos los JSONs
-        const metadataResults = await Promise.allSettled(
-          metadataJsons.map(async (f: any) => {
-            const url = LighthouseService.gatewayUrl(f.cid);
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const json = await res.json();
-            return { cid: f.cid, fileName: f.fileName, json };
-          })
-        );
+        // ✨ PROCESAR EN LOTES PARA EVITAR RATE LIMITING
+        const BATCH_SIZE = 3; // Procesar de 3 en 3
+        const validMetadatas: any[] = [];
+        
+        for (let i = 0; i < metadataJsons.length; i += BATCH_SIZE) {
+          const batch = metadataJsons.slice(i, i + BATCH_SIZE);
+          
+          const batchResults = await Promise.allSettled(
+            batch.map(async (f: any) => {
+              const json = await fetchMetadataWithCache(f.cid, f.fileName);
+              if (json) {
+                return { cid: f.cid, fileName: f.fileName, json };
+              }
+              throw new Error('No metadata');
+            })
+          );
+          
+          for (const r of batchResults) {
+            if (r.status === "fulfilled") {
+              validMetadatas.push(r.value);
+            }
+          }
+          
+          // Pequeña pausa entre lotes para no saturar
+          if (i + BATCH_SIZE < metadataJsons.length) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+
+        console.log(`✅ Metadatos válidos obtenidos: ${validMetadatas.length}`);
 
         // Construir mapa: audioCid → metadata JSON
         const metadataByAudioCid = new Map<string, any>();
         
-        for (const r of metadataResults) {
-          if (r.status === "fulfilled") {
-            const { json } = r.value;
-            const animUrl: string = json.animation_url ?? "";
-            const audioCidFromJson = animUrl.replace("ipfs://", "").trim();
-            
-            if (audioCidFromJson) {
-              metadataByAudioCid.set(audioCidFromJson, json);
-            }
+        for (const item of validMetadatas) {
+          const { json } = item;
+          const animUrl: string = json.animation_url ?? "";
+          const audioCidFromJson = animUrl.replace("ipfs://", "").trim();
+          
+          if (audioCidFromJson) {
+            metadataByAudioCid.set(audioCidFromJson, json);
           }
         }
 
