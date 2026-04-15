@@ -3,7 +3,7 @@
  *
  * Hook unificado para wallet — resuelve el error s11 de Privy.
  * CORREGIDO PARA VERCEL: Utiliza getEthersProvider de Privy como fallback
- * cuando activeWallet no está disponible, manejando la compatibilidad entre ethers v5 y v6.
+ * cuando activeWallet no está disponible, con espera de inicialización.
  */
 
 import { useMemo } from "react";
@@ -39,7 +39,7 @@ export function useWallet(): WalletState {
   /**
    * Obtiene un BrowserProvider de ethers v6.
    * Prioriza activeWallet, pero si no está disponible (común en Vercel),
-   * utiliza getEthersProvider de Privy manejando la compatibilidad entre versiones.
+   * utiliza getEthersProvider de Privy con espera de inicialización.
    */
   const getProvider = useMemo(() => {
     return async (): Promise<ethers.BrowserProvider> => {
@@ -53,15 +53,34 @@ export function useWallet(): WalletState {
       if (getEthersProvider) {
         const privyProvider = await getEthersProvider(); // Web3Provider de ethers v5
         
-        // Intentar extraer el provider nativo compatible con ethers v6
+        // Extraer el provider nativo (EIP-1193)
         const rawProvider = (privyProvider as any).provider;
-        if (rawProvider && typeof rawProvider.request === 'function') {
-          return new ethers.BrowserProvider(rawProvider);
+        if (!rawProvider || typeof rawProvider.request !== 'function') {
+          throw new Error("El proveedor de Privy no es válido.");
         }
-        
-        // Si no tiene provider subyacente, intentar usarlo directamente
-        // (puede funcionar si ya es compatible)
-        return privyProvider as unknown as ethers.BrowserProvider;
+
+        // Crear BrowserProvider de ethers v6
+        const browserProvider = new ethers.BrowserProvider(rawProvider);
+
+        // ⚠️ Esperar a que el proveedor esté listo para recibir solicitudes
+        // Privy a veces devuelve el proveedor antes de que esté completamente inicializado.
+        let attempts = 0;
+        while (attempts < 10) {
+          try {
+            // Intentar una operación simple para verificar que el proveedor funciona
+            await browserProvider.getNetwork();
+            return browserProvider; // Éxito
+          } catch (error: any) {
+            // Si falla por "before setting a wallet provider", esperamos y reintentamos
+            if (error?.message?.includes("before setting a wallet provider")) {
+              await new Promise(resolve => setTimeout(resolve, 300));
+              attempts++;
+            } else {
+              throw error; // Otro error, no reintentar
+            }
+          }
+        }
+        throw new Error("El proveedor de Privy no está respondiendo. Intenta recargar la página.");
       }
       
       throw new Error("No se pudo obtener un proveedor Ethereum. Asegúrate de estar conectado.");
