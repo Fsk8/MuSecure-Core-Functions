@@ -2,8 +2,7 @@
  * MuSecure – hooks/useRegisterWork.ts
  *
  * Usa useWallet().getProvider() en lugar de window.ethereum.
- * Funciona transparentemente con embedded wallets (email/Google)
- * y wallets externas (MetaMask/Rabby) sin distinción.
+ * CORREGIDO: Usa gasPrice en lugar de maxFeePerGas para Arbitrum Sepolia.
  */
 
 import { useState, useCallback } from "react";
@@ -51,7 +50,6 @@ const STEP_MESSAGES: Record<RegisterStep, string> = {
 export function useRegisterWork() {
   const [state, setState] = useState<RegisterState>({ step: "idle", message: "" });
 
-  // ✨ Obtener getProvider del hook unificado (funciona con Privy y MetaMask)
   const { getProvider, address } = useWallet();
 
   const set = (step: RegisterStep, extra?: Partial<RegisterState>) =>
@@ -70,9 +68,6 @@ export function useRegisterWork() {
       if (!registryAddress) throw new Error("Falta VITE_REGISTRY_ADDRESS en .env");
       if (!getProvider) throw new Error("No hay wallet conectada. Inicia sesión primero.");
 
-      // ── Obtener provider y signer desde Privy ────────────────────────────
-      // getProvider() usa wallet.getEthereumProvider() internamente,
-      // lo que funciona igual para embedded wallets y MetaMask/Rabby.
       const provider = await getProvider();
       const network = await provider.getNetwork();
 
@@ -113,11 +108,13 @@ export function useRegisterWork() {
       const sigData = await sigRes.json();
       if (!sigData.success) throw new Error(sigData.error ?? "Falla en firma del backend");
 
-      // 3. Enviar transacción
+      // 3. Enviar transacción - ✨ USAR gasPrice PARA ARBITRUM
       set("waiting-wallet");
       const feeData = await provider.getFeeData();
-      const maxFeePerGas = (feeData.maxFeePerGas! * 130n) / 100n;
-      const maxPriorityFeePerGas = (feeData.maxPriorityFeePerGas! * 130n) / 100n;
+      
+      // Arbitrum Sepolia no soporta maxPriorityFeePerGas correctamente
+      // Usamos gasPrice tradicional
+      const gasPrice = feeData.gasPrice ? (feeData.gasPrice * 130n) / 100n : undefined;
 
       const tx = await registry.registerWork(
         cleanHash,
@@ -125,7 +122,10 @@ export function useRegisterWork() {
         BigInt(input.authenticityScore),
         input.soulbound,
         sigData.signature,
-        { maxFeePerGas, maxPriorityFeePerGas, gasLimit: 600000n }
+        { 
+          gasPrice,
+          gasLimit: 600000n 
+        }
       );
 
       // 4. Esperar confirmación
