@@ -10,6 +10,8 @@
  *
  * Este hook es la única fuente de verdad para address, signMessage y provider.
  * Úsalo en lugar de extraer signMessage de usePrivy().
+ * 
+ * CORREGIDO PARA VERCEL: Usa user.wallet.address como fallback si activeWallet no está lista.
  */
 
 import { useMemo } from "react";
@@ -30,7 +32,7 @@ export interface WalletState {
 }
 
 export function useWallet(): WalletState {
-  const { ready, authenticated } = usePrivy();
+  const { ready, authenticated, user } = usePrivy(); // ✨ Añadir user
   const { wallets } = useWallets();
 
   // Wallet activa: priorizar embedded (Privy) sobre externa (MetaMask/Rabby)
@@ -42,8 +44,10 @@ export function useWallet(): WalletState {
     return embedded ?? wallets[0];
   }, [wallets]);
 
-  const address = activeWallet?.address ?? null;
-  const isReady = ready && authenticated && !!activeWallet;
+  // ✨ Para Vercel: Usar user.wallet.address como fallback si activeWallet no está lista
+  const address = activeWallet?.address ?? user?.wallet?.address ?? null;
+  // ✨ Para Vercel: Considerar lista si hay address (no solo activeWallet)
+  const isReady = ready && authenticated && !!address;
 
   /**
    * Firma un mensaje usando el provider de ethers.
