@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { CheckCircle2, XCircle, Shield, Loader2, ExternalLink, Droplets } from "lucide-react";
 
 interface Props {
-  fingerprint: string;  // ✨ La prop se llama fingerprint (viene del padre)
+  fingerprint: string;
   ipfsCid: string;
   authenticityScore: number;
   soulbound: boolean;
@@ -33,19 +33,19 @@ export function RegisterWorkButton({
   onSuccess,
 }: Props) {
   const { registerWork, state } = useRegisterWork();
-  const { address } = useWallet();
+  const { address, isReady } = useWallet(); // ✨ Añadir isReady
   const { requestManualAirdrop, airdropStatus, airdropMessage } = useGasAirdrop(address || null, false);
 
   const isLoading = !["idle", "done", "error"].includes(state.step);
   const isRequestingGas = airdropStatus === "sending";
+  const isWalletReady = isReady && address; // ✨ Esperar a que la wallet esté lista
 
   const risk = RISK_CONFIG[authenticityScore] || RISK_CONFIG[0];
   const isBlocked = authenticityScore >= 2;
 
   const handleRegister = async () => {
-    if (!ipfsCid) return;
+    if (!ipfsCid || !isWalletReady) return;
     
-    // ✨ Mapear fingerprint (prop) → fingerprintHash (parámetro esperado)
     const result = await registerWork({
       fingerprintHash: fingerprint,
       ipfsCid: ipfsCid,
@@ -104,9 +104,18 @@ export function RegisterWorkButton({
               </div>
             ) : (
               <div className="space-y-4">
+                {/* ✨ Mostrar mensaje si la wallet no está lista */}
+                {!isWalletReady && (
+                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-center">
+                    <p className="font-mono text-[10px] text-amber-400">
+                      ⏳ Esperando conexión con la wallet...
+                    </p>
+                  </div>
+                )}
+                
                 <Button
                   onClick={handleRegister}
-                  disabled={isLoading || !ipfsCid || isRequestingGas}
+                  disabled={isLoading || !ipfsCid || isRequestingGas || !isWalletReady}
                   className="w-full"
                   size="lg"
                 >
@@ -114,6 +123,11 @@ export function RegisterWorkButton({
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       {state.message || "Procesando..."}
+                    </>
+                  ) : !isWalletReady ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Conectando wallet...
                     </>
                   ) : (
                     <>
@@ -128,7 +142,7 @@ export function RegisterWorkButton({
                     variant="ghost"
                     size="sm"
                     onClick={() => address && requestManualAirdrop(address)}
-                    disabled={isRequestingGas || isLoading}
+                    disabled={isRequestingGas || isLoading || !isWalletReady}
                     className="h-8 text-[11px] text-zinc-500 hover:text-emerald-400"
                   >
                     {isRequestingGas ? (
