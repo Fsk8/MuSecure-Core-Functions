@@ -179,7 +179,7 @@ export function IPFSUploadForm({
           ) : (
             <div className="w-full">
               <RegisterWorkButton
-                fingerprintHash={`0x${fingerprint.sha256}`}
+                fingerprint={`0x${fingerprint.sha256}`}
                 ipfsCid={metadataCid}
                 authenticityScore={authenticityScore}
                 soulbound={isSoulbound}
