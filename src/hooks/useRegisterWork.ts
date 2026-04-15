@@ -2,7 +2,7 @@
  * MuSecure – hooks/useRegisterWork.ts
  *
  * Usa useWallet().getProvider() en lugar de window.ethereum.
- * CORREGIDO: Usa gasPrice en lugar de maxFeePerGas para Arbitrum Sepolia.
+ * CORREGIDO: Usa gasPrice para Arbitrum Sepolia y verifica que la wallet esté lista.
  */
 
 import { useState, useCallback } from "react";
@@ -50,7 +50,7 @@ const STEP_MESSAGES: Record<RegisterStep, string> = {
 export function useRegisterWork() {
   const [state, setState] = useState<RegisterState>({ step: "idle", message: "" });
 
-  const { getProvider, address } = useWallet();
+  const { getProvider, isReady } = useWallet(); // ✨ isReady
 
   const set = (step: RegisterStep, extra?: Partial<RegisterState>) =>
     setState(prev => ({ ...prev, step, message: STEP_MESSAGES[step], ...extra }));
@@ -66,7 +66,15 @@ export function useRegisterWork() {
       const backendUrl = (import.meta.env.VITE_BACKEND_URL as string) ?? "";
 
       if (!registryAddress) throw new Error("Falta VITE_REGISTRY_ADDRESS en .env");
-      if (!getProvider) throw new Error("No hay wallet conectada. Inicia sesión primero.");
+      
+      // ✨ Verificar que la wallet esté lista
+      if (!isReady) {
+        throw new Error("La wallet aún no está lista. Espera unos segundos.");
+      }
+      
+      if (!getProvider) {
+        throw new Error("No se pudo conectar con el proveedor Ethereum. Intenta recargar la página.");
+      }
 
       const provider = await getProvider();
       const network = await provider.getNetwork();
@@ -108,12 +116,9 @@ export function useRegisterWork() {
       const sigData = await sigRes.json();
       if (!sigData.success) throw new Error(sigData.error ?? "Falla en firma del backend");
 
-      // 3. Enviar transacción - ✨ USAR gasPrice PARA ARBITRUM
+      // 3. Enviar transacción - USAR gasPrice PARA ARBITRUM
       set("waiting-wallet");
       const feeData = await provider.getFeeData();
-      
-      // Arbitrum Sepolia no soporta maxPriorityFeePerGas correctamente
-      // Usamos gasPrice tradicional
       const gasPrice = feeData.gasPrice ? (feeData.gasPrice * 130n) / 100n : undefined;
 
       const tx = await registry.registerWork(
@@ -153,7 +158,7 @@ export function useRegisterWork() {
       set("error", { error: msg });
       throw err;
     }
-  }, [getProvider]);
+  }, [getProvider, isReady]);
 
   const reset = useCallback(() => {
     setState({ step: "idle", message: "" });
