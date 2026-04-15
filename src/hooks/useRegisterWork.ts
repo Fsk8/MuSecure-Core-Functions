@@ -1,13 +1,22 @@
+/**
+ * MuSecure – hooks/useRegisterWork.ts
+ *
+ * Usa useWallet().getProvider() en lugar de window.ethereum.
+ * Funciona transparentemente con embedded wallets (email/Google)
+ * y wallets externas (MetaMask/Rabby) sin distinción.
+ */
+
 import { useState, useCallback } from "react";
 import { ethers } from "ethers";
+import { useWallet } from "@/hooks/useWallet";
 
-export type RegisterStep = 
-  | "idle" 
-  | "checking-duplicate" 
-  | "requesting-signature" 
-  | "waiting-wallet" 
-  | "confirming" 
-  | "done" 
+export type RegisterStep =
+  | "idle"
+  | "checking-duplicate"
+  | "requesting-signature"
+  | "waiting-wallet"
+  | "confirming"
+  | "done"
   | "error";
 
 export interface RegisterState {
@@ -30,17 +39,20 @@ const REGISTRY_ABI = [
 ];
 
 const STEP_MESSAGES: Record<RegisterStep, string> = {
-  "idle": "",
-  "checking-duplicate": "Verificando registro previo...",
-  "requesting-signature": "Solicitando firma al backend...",
-  "waiting-wallet": "Confirma en tu MetaMask...",
-  "confirming": "Confirmando en Arbitrum Sepolia...",
-  "done": "¡Registro exitoso!",
-  "error": "Error en el proceso",
+  "idle":                  "",
+  "checking-duplicate":    "Verificando registro previo...",
+  "requesting-signature":  "Solicitando firma al backend...",
+  "waiting-wallet":        "Confirma en tu wallet...",
+  "confirming":            "Confirmando en Arbitrum Sepolia...",
+  "done":                  "¡Registro exitoso!",
+  "error":                 "Error en el proceso",
 };
 
 export function useRegisterWork() {
   const [state, setState] = useState<RegisterState>({ step: "idle", message: "" });
+
+  // getProvider() usa useWallets internamente — funciona con cualquier tipo de wallet
+  const { getProvider, address } = useWallet();
 
   const set = (step: RegisterStep, extra?: Partial<RegisterState>) =>
     setState(prev => ({ ...prev, step, message: STEP_MESSAGES[step], ...extra }));
@@ -52,17 +64,20 @@ export function useRegisterWork() {
     soulbound: boolean;
   }): Promise<RegisterResult> => {
     try {
-      const registryAddress = import.meta.env.VITE_REGISTRY_ADDRESS;
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://tu-backend.vercel.app";
+      const registryAddress = import.meta.env.VITE_REGISTRY_ADDRESS as string;
+      const backendUrl = (import.meta.env.VITE_BACKEND_URL as string) ?? "";
 
-      if (!window.ethereum) throw new Error("MetaMask no detectado");
+      if (!registryAddress) throw new Error("Falta VITE_REGISTRY_ADDRESS en .env");
+      if (!getProvider) throw new Error("No hay wallet conectada. Inicia sesión primero.");
 
-      const provider = new ethers.BrowserProvider(window.ethereum as any);
+      // ── Obtener provider y signer desde Privy ────────────────────────────
+      // getProvider() usa wallet.getEthereumProvider() internamente,
+      // lo que funciona igual para embedded wallets y MetaMask/Rabby.
+      const provider = await getProvider();
       const network = await provider.getNetwork();
-      const currentChainId = network.chainId; // Obtenemos el chainId numérico
 
-      if (currentChainId.toString() !== "421614") {
-        throw new Error(`Cambia a Arbitrum Sepolia (421614) en MetaMask.`);
+      if (network.chainId.toString() !== "421614") {
+        throw new Error("Cambia tu wallet a Arbitrum Sepolia (421614).");
       }
 
       const signer = await provider.getSigner();
@@ -72,12 +87,12 @@ export function useRegisterWork() {
       let cleanHash = input.fingerprintHash;
       if (!cleanHash.startsWith("0x")) cleanHash = "0x" + cleanHash;
 
-      // 1. Duplicados
+      // 1. Verificar duplicado
       set("checking-duplicate");
       const exists = await registry.workExists(cleanHash);
-      if (exists) throw new Error("Esta huella ya está registrada.");
+      if (exists) throw new Error("Esta huella ya está registrada en MuSecure.");
 
-      // 2. Firma del Backend (ACTUALIZADO: Mandamos todos los parámetros del contrato)
+      // 2. Firma del backend
       set("requesting-signature");
       const sigRes = await fetch(`${backendUrl}/api/sign-music`, {
         method: "POST",
@@ -85,20 +100,21 @@ export function useRegisterWork() {
         body: JSON.stringify({
           fingerprintHash: cleanHash,
           score: input.authenticityScore,
-          ipfsCid: input.ipfsCid,
-          soulbound: input.soulbound,
-          userAddress: userAddress,
-          chainId: Number(currentChainId),
-          contractAddress: registryAddress
+          userAddress,
+          chainId: Number(network.chainId),
         }),
       });
 
-      const sigData = await sigRes.json();
-      if (!sigData.success) throw new Error(sigData.error || "Falla en firma del backend");
+      if (!sigRes.ok) {
+        const txt = await sigRes.text();
+        throw new Error(`Backend error ${sigRes.status}: ${txt}`);
+      }
 
-      // 3. Transacción
+      const sigData = await sigRes.json();
+      if (!sigData.success) throw new Error(sigData.error ?? "Falla en firma del backend");
+
+      // 3. Enviar transacción
       set("waiting-wallet");
-      
       const feeData = await provider.getFeeData();
       const maxFeePerGas = (feeData.maxFeePerGas! * 130n) / 100n;
       const maxPriorityFeePerGas = (feeData.maxPriorityFeePerGas! * 130n) / 100n;
@@ -109,37 +125,39 @@ export function useRegisterWork() {
         BigInt(input.authenticityScore),
         input.soulbound,
         sigData.signature,
-        {
-          maxFeePerGas,
-          maxPriorityFeePerGas,
-          gasLimit: 600000 
-        }
+        { maxFeePerGas, maxPriorityFeePerGas, gasLimit: 600000n }
       );
 
-      // 4. Confirmación
+      // 4. Esperar confirmación
       set("confirming", { txHash: tx.hash });
       const receipt = await tx.wait(1);
 
       let tokenId = 0;
       const iface = new ethers.Interface(REGISTRY_ABI);
-      receipt?.logs.forEach((log: any) => {
+      for (const log of receipt?.logs ?? []) {
         try {
           const parsed = iface.parseLog(log);
-          if (parsed?.name === "WorkRegistered") tokenId = Number(parsed.args.tokenId);
-        } catch (e) {}
-      });
+          if (parsed?.name === "WorkRegistered") {
+            tokenId = Number(parsed.args.tokenId);
+          }
+        } catch {}
+      }
 
-      const res = { txHash: tx.hash, tokenId };
-      set("done", res);
-      return res;
+      const result = { txHash: tx.hash, tokenId };
+      set("done", result);
+      return result;
 
     } catch (err: any) {
-      console.error("🔴 Error MuSecure:", err);
-      const msg = err.error?.message || err.reason || err.message || "Error desconocido";
+      console.error("[RegisterWork] Error:", err);
+      const msg = err.reason ?? err.error?.message ?? err.message ?? "Error desconocido";
       set("error", { error: msg });
       throw err;
     }
+  }, [getProvider]);
+
+  const reset = useCallback(() => {
+    setState({ step: "idle", message: "" });
   }, []);
 
-  return { registerWork, state, reset: () => setState({ step: "idle", message: "" }) };
+  return { registerWork, state, reset };
 }
