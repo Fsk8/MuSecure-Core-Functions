@@ -8,7 +8,6 @@ export interface WalletState {
   signMessage: ((message: string) => Promise<string>) | null;
   getProvider: (() => Promise<ethers.BrowserProvider>) | null;
   isReady: boolean;
-  isEmbedded: boolean; // 👈 ESTA ES LA CLAVE
 }
 
 export function useWallet(): WalletState {
@@ -17,10 +16,8 @@ export function useWallet(): WalletState {
 
   const activeWallet = useMemo(() => {
     if (!wallets.length) return null;
-    return wallets[0]; // 👈 usamos la que el usuario eligió
+    return wallets[0];
   }, [wallets]);
-
-  const isEmbedded = activeWallet?.walletClientType === "privy";
 
   const address = activeWallet?.address ?? user?.wallet?.address ?? null;
 
@@ -60,6 +57,5 @@ export function useWallet(): WalletState {
     signMessage,
     getProvider,
     isReady,
-    isEmbedded, // 👈 AHORA SÍ EXISTE
   };
 }
