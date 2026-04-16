@@ -14,14 +14,20 @@ export function PrivyProviderWrapper({ children }: Props) {
       appId={appId}
       config={{
         loginMethods: ["email", "wallet", "google"],
+
         appearance: {
           theme: "dark",
           accentColor: "#10b981",
         },
+
         embeddedWallets: {
           createOnLogin: "users-without-wallets",
           requireUserPasswordOnCreate: false,
+
+          // 🔥 ESTA LÍNEA ES LA CLAVE
+          noPromptOnSignature: true,
         },
+
         defaultChain: arbitrumSepolia,
         supportedChains: [arbitrumSepolia],
       }}

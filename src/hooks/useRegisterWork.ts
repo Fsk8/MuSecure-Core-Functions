@@ -1,10 +1,3 @@
-/**
- * MuSecure – hooks/useRegisterWork.ts
- *
- * Usa useWallet().getProvider() en lugar de window.ethereum.
- * CORREGIDO: Usa gasPrice para Arbitrum Sepolia y verifica que la wallet esté lista.
- */
-
 import { useState, useCallback } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "@/hooks/useWallet";
@@ -38,22 +31,21 @@ const REGISTRY_ABI = [
 ];
 
 const STEP_MESSAGES: Record<RegisterStep, string> = {
-  "idle":                  "",
-  "checking-duplicate":    "Verificando registro previo...",
-  "requesting-signature":  "Solicitando firma al backend...",
-  "waiting-wallet":        "Confirma en tu wallet...",
-  "confirming":            "Confirmando en Arbitrum Sepolia...",
-  "done":                  "¡Registro exitoso!",
-  "error":                 "Error en el proceso",
+  idle: "",
+  "checking-duplicate": "Verificando registro previo...",
+  "requesting-signature": "Solicitando firma...",
+  "waiting-wallet": "Confirma la transacción...",
+  confirming: "Confirmando en blockchain...",
+  done: "¡Obra protegida!",
+  error: "Error",
 };
 
 export function useRegisterWork() {
   const [state, setState] = useState<RegisterState>({ step: "idle", message: "" });
-
-  const { getProvider, isReady } = useWallet(); // ✨ isReady
+  const { getProvider, address } = useWallet();
 
   const set = (step: RegisterStep, extra?: Partial<RegisterState>) =>
-    setState(prev => ({ ...prev, step, message: STEP_MESSAGES[step], ...extra }));
+    setState((prev) => ({ ...prev, step, message: STEP_MESSAGES[step], ...extra }));
 
   const registerWork = useCallback(async (input: {
     fingerprintHash: string;
@@ -62,84 +54,65 @@ export function useRegisterWork() {
     soulbound: boolean;
   }): Promise<RegisterResult> => {
     try {
-      const registryAddress = import.meta.env.VITE_REGISTRY_ADDRESS as string;
-      const backendUrl = (import.meta.env.VITE_BACKEND_URL as string) ?? "";
-
-      if (!registryAddress) throw new Error("Falta VITE_REGISTRY_ADDRESS en .env");
-      
-      // ✨ Verificar que la wallet esté lista
-      if (!isReady) {
-        throw new Error("La wallet aún no está lista. Espera unos segundos.");
-      }
-      
-      if (!getProvider) {
-        throw new Error("No se pudo conectar con el proveedor Ethereum. Intenta recargar la página.");
+      if (!getProvider || !address) {
+        throw new Error("Wallet no lista");
       }
 
+      const registryAddress = import.meta.env.VITE_REGISTRY_ADDRESS;
+      const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
+      // 👇 IMPORTANTE: provider limpio
       const provider = await getProvider();
-      const network = await provider.getNetwork();
-
-      if (network.chainId.toString() !== "421614") {
-        throw new Error("Cambia tu wallet a Arbitrum Sepolia (421614).");
-      }
-
       const signer = await provider.getSigner();
-      const userAddress = await signer.getAddress();
-      const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, signer);
+
+      const registry = new ethers.Contract(
+        registryAddress,
+        REGISTRY_ABI,
+        signer
+      );
 
       let cleanHash = input.fingerprintHash;
       if (!cleanHash.startsWith("0x")) cleanHash = "0x" + cleanHash;
 
-      // 1. Verificar duplicado
       set("checking-duplicate");
       const exists = await registry.workExists(cleanHash);
-      if (exists) throw new Error("Esta huella ya está registrada en MuSecure.");
+      if (exists) throw new Error("Ya registrado");
 
-      // 2. Firma del backend
       set("requesting-signature");
-      const sigRes = await fetch(`${backendUrl}/api/sign-music`, {
+
+      const res = await fetch(`${backendUrl}/api/sign-music`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fingerprintHash: cleanHash,
           score: input.authenticityScore,
-          userAddress,
-          chainId: Number(network.chainId),
+          userAddress: address,
+          chainId: 421614,
         }),
       });
 
-      if (!sigRes.ok) {
-        const txt = await sigRes.text();
-        throw new Error(`Backend error ${sigRes.status}: ${txt}`);
-      }
+      const sig = await res.json();
+      if (!sig.success) throw new Error("Error backend");
 
-      const sigData = await sigRes.json();
-      if (!sigData.success) throw new Error(sigData.error ?? "Falla en firma del backend");
-
-      // 3. Enviar transacción - USAR gasPrice PARA ARBITRUM
       set("waiting-wallet");
-      const feeData = await provider.getFeeData();
-      const gasPrice = feeData.gasPrice ? (feeData.gasPrice * 130n) / 100n : undefined;
 
+      // 👇 CLAVE: esto ahora usa ethers directo (no Privy flow)
       const tx = await registry.registerWork(
         cleanHash,
         input.ipfsCid,
         BigInt(input.authenticityScore),
         input.soulbound,
-        sigData.signature,
-        { 
-          gasPrice,
-          gasLimit: 600000n 
-        }
+        sig.signature
       );
 
-      // 4. Esperar confirmación
       set("confirming", { txHash: tx.hash });
-      const receipt = await tx.wait(1);
+
+      const receipt = await tx.wait();
 
       let tokenId = 0;
       const iface = new ethers.Interface(REGISTRY_ABI);
-      for (const log of receipt?.logs ?? []) {
+
+      for (const log of receipt.logs) {
         try {
           const parsed = iface.parseLog(log);
           if (parsed?.name === "WorkRegistered") {
@@ -148,21 +121,16 @@ export function useRegisterWork() {
         } catch {}
       }
 
-      const result = { txHash: tx.hash, tokenId };
-      set("done", result);
-      return result;
+      set("done", { txHash: tx.hash, tokenId });
+
+      return { txHash: tx.hash, tokenId };
 
     } catch (err: any) {
-      console.error("[RegisterWork] Error:", err);
-      const msg = err.reason ?? err.error?.message ?? err.message ?? "Error desconocido";
-      set("error", { error: msg });
+      console.error(err);
+      set("error", { error: err.message });
       throw err;
     }
-  }, [getProvider, isReady]);
+  }, [getProvider, address]);
 
-  const reset = useCallback(() => {
-    setState({ step: "idle", message: "" });
-  }, []);
-
-  return { registerWork, state, reset };
+  return { registerWork, state };
 }

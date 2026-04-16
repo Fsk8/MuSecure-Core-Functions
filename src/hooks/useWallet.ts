@@ -1,75 +1,99 @@
-/**
- * MuSecure – hooks/useWallet.ts
- *
- * Hook unificado para wallet — resuelve el error s11 de Privy.
- * VERSIÓN ROBUSTA PARA VERCEL: Solo utiliza activeWallet de useWallets.
- */
-
 import { useMemo } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { ethers } from "ethers";
 
 export interface WalletState {
-  /** Dirección de la wallet activa (checksummed) */
   address: string | null;
-  /** true mientras Privy inicializa */
   connecting: boolean;
-  /** Firma un mensaje con la wallet activa (embedded o externa) */
   signMessage: ((message: string) => Promise<string>) | null;
-  /** Provider de ethers de la wallet activa — para enviar txs */
   getProvider: (() => Promise<ethers.BrowserProvider>) | null;
-  /** true si hay una wallet activa lista */
+  getEip1193Provider: (() => Promise<any>) | null; // 👈 AGREGADO
   isReady: boolean;
+}
+
+async function getEthereumProviderWithRetry(
+  wallet: any,
+  maxRetries = 5,
+  delayMs = 600
+): Promise<any> {
+  let lastError: unknown;
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const provider = await wallet.getEthereumProvider();
+
+      if (provider && typeof provider.request === "function") {
+        return provider;
+      }
+    } catch (e) {
+      lastError = e;
+    }
+
+    await new Promise((res) => setTimeout(res, delayMs));
+  }
+
+  throw lastError ?? new Error("No se pudo obtener provider válido");
 }
 
 export function useWallet(): WalletState {
   const { ready, authenticated, user } = usePrivy();
   const { wallets } = useWallets();
 
-  // Wallet activa: priorizar embedded (Privy) sobre externa (MetaMask/Rabby)
   const activeWallet = useMemo(() => {
     if (!wallets.length) return null;
     const embedded = wallets.find((w) => w.walletClientType === "privy");
     return embedded ?? wallets[0];
   }, [wallets]);
 
-  // Dirección: de activeWallet o de user.wallet (fallback)
   const address = activeWallet?.address ?? user?.wallet?.address ?? null;
   const isReady = ready && authenticated && !!address;
 
-  /**
-   * Obtiene un BrowserProvider de ethers v6.
-   * Solo utiliza activeWallet porque es la fuente más confiable.
-   */
+  // 👇 provider EIP-1193 puro (CLAVE para evitar el error)
+  const getEip1193Provider = useMemo(() => {
+    if (!activeWallet) return null;
+
+    return async () => {
+      return await getEthereumProviderWithRetry(activeWallet);
+    };
+  }, [activeWallet]);
+
+  // 👇 ethers provider (para contratos)
   const getProvider = useMemo(() => {
     if (!activeWallet) return null;
-    
-    return async (): Promise<ethers.BrowserProvider> => {
-      try {
-        const ethereumProvider = await activeWallet.getEthereumProvider();
-        return new ethers.BrowserProvider(ethereumProvider);
-      } catch (error) {
-        console.error("Error al obtener el proveedor de la wallet:", error);
-        throw new Error("No se pudo conectar con la wallet. Asegúrate de haber iniciado sesión correctamente.");
-      }
+
+    return async () => {
+      const eip1193 = await getEthereumProviderWithRetry(activeWallet);
+      return new ethers.BrowserProvider(eip1193);
     };
   }, [activeWallet]);
 
-  /**
-   * Firma un mensaje usando el provider de ethers.
-   */
+  // 👇 FIX REAL (sin usar signer.signMessage)
   const signMessage = useMemo(() => {
-    if (!activeWallet) return null;
-    return async (message: string): Promise<string> => {
-      const ethereumProvider = await activeWallet.getEthereumProvider();
-      const provider = new ethers.BrowserProvider(ethereumProvider);
-      const signer = await provider.getSigner();
-      return signer.signMessage(message);
+    if (!activeWallet || !address) return null;
+
+    return async (message: string) => {
+      const provider = await getEthereumProviderWithRetry(activeWallet);
+
+      const hexMessage = ethers.hexlify(ethers.toUtf8Bytes(message));
+
+      const signature = await provider.request({
+        method: "personal_sign",
+        params: [hexMessage, address],
+      });
+
+      return signature;
     };
-  }, [activeWallet]);
+  }, [activeWallet, address]);
 
   return useMemo(
-    () => ({ address, connecting: !ready, signMessage, getProvider, isReady }),
-    [address, ready, signMessage, getProvider, isReady]
+    () => ({
+      address,
+      connecting: !ready,
+      signMessage,
+      getProvider,
+      getEip1193Provider, // 👈 AGREGADO AL RETURN
+      isReady,
+    }),
+    [address, ready, signMessage, getProvider, getEip1193Provider, isReady]
   );
 }

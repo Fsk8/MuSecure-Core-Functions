@@ -93,8 +93,6 @@ export const FingerprintUploader = () => {
 
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
-  const [isEncrypted, setIsEncrypted] = useState(true);
-  const [isSoulbound, setIsSoulbound] = useState(true);
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
@@ -366,57 +364,6 @@ export const FingerprintUploader = () => {
               </motion.div>
             )}
           </AnimatePresence>
-
-          {/* Toggle options */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => setIsSoulbound(!isSoulbound)}
-              className={`flex items-center gap-3 rounded-2xl border p-4 transition-all ${
-                isSoulbound
-                  ? "border-emerald-500/30 bg-emerald-500/5"
-                  : "border-surface-border bg-surface-overlay"
-              }`}
-              aria-pressed={isSoulbound}
-            >
-              {isSoulbound ? (
-                <Link2 className="h-4 w-4 text-emerald-500" />
-              ) : (
-                <Unlink2 className="h-4 w-4 text-zinc-500" />
-              )}
-              <div className="text-left">
-                <p className={`text-xs font-bold ${isSoulbound ? "text-emerald-500" : "text-zinc-400"}`}>
-                  Soulbound
-                </p>
-                <p className="text-[10px] text-zinc-600">
-                  {isSoulbound ? "Intransferible" : "Transferible"}
-                </p>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setIsEncrypted(!isEncrypted)}
-              className={`flex items-center gap-3 rounded-2xl border p-4 transition-all ${
-                isEncrypted
-                  ? "border-violet/30 bg-violet-glow"
-                  : "border-surface-border bg-surface-overlay"
-              }`}
-              aria-pressed={isEncrypted}
-            >
-              {isEncrypted ? (
-                <Lock className="h-4 w-4 text-violet" />
-              ) : (
-                <Unlock className="h-4 w-4 text-zinc-500" />
-              )}
-              <div className="text-left">
-                <p className={`text-xs font-bold ${isEncrypted ? "text-violet" : "text-zinc-400"}`}>
-                  Cifrado
-                </p>
-                <p className="text-[10px] text-zinc-600">
-                  {isEncrypted ? "Encriptado" : "Público"}
-                </p>
-              </div>
-            </button>
-          </div>
 
           <Separator />
 
