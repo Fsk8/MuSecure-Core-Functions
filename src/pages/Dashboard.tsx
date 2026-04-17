@@ -1,450 +1,312 @@
 /**
- * MuSecure – Dashboard v2
- * 
- * Soporta ambas estructuras y recupera metadata desde localStorage si el CID falla
+ * MuSecure – Dashboard v3 (Feed Global + Filtro Personal)
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { ethers } from "ethers";
-import { LighthouseService } from "@/services/LighthouseService";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallet } from "@/hooks/useWallet";
 import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
+import { LighthouseService } from "@/services/LighthouseService";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { motion } from "motion/react";
-import { RefreshCw, ExternalLink, Shield, Music, Headphones, AlertCircle, Database } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { motion, AnimatePresence } from "motion/react";
+import { RefreshCw, ExternalLink, Shield, Music, Headphones, AlertCircle, Globe, User } from "lucide-react";
 import type { MuSecureMetadata } from "@/types/ipfs";
-
-// Tipo para la nueva estructura NFT
-interface NFTMetadataJSON {
-  name: string;
-  description: string;
-  image: string;
-  animation_url: string;
-  attributes: Array<{ trait_type: string; value: string | boolean }>;
-}
-
-// Tipo unión para soportar ambas estructuras
-type AnyMetadata = MuSecureMetadata | NFTMetadataJSON;
 
 const REGISTRY_ABI = [
   "event WorkRegistered(address indexed author, bytes32 indexed fingerprintHash, string ipfsCid, uint256 authenticityScore, uint8 riskLevel, uint256 tokenId, uint256 timestamp)",
 ];
 
 const RISK_LABEL = ["Bajo Riesgo", "Riesgo Medio", "Alto Riesgo", "Bloqueado"];
-const RISK_VARIANT: Record<number, "success" | "warning" | "danger" | "violet"> = {
-  0: "success", 1: "warning", 2: "danger", 3: "violet",
+
+const DEPLOY_BLOCK = 75000000; 
+
+const getRiskVariant = (level: number): "success" | "warning" | "danger" | "violet" | "secondary" => {
+  switch (level) {
+    case 0: return "success";
+    case 1: return "warning";
+    case 2: return "danger";
+    case 3: return "violet";
+    default: return "secondary";
+  }
 };
 
 interface WorkItem {
-  fingerprintHash: string;
-  ipfsCid: string;
+  tokenId: number;
+  metadataCid: string;
+  audioCid: string;
   authenticityScore: number;
   riskLevel: number;
-  tokenId: number;
   timestamp: number;
   txHash: string;
-  metadata?: AnyMetadata;
+  title: string;
+  artist: string;
+  author: string; // Guardamos quien lo subió
+  isEncrypted: boolean;
   metaLoading: boolean;
   metaError?: string;
-  recoveredFromLocal?: boolean;
-}
-
-function DashboardSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-10 w-10 rounded-xl" />
-      </div>
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Card key={i} className="space-y-4">
-            <div className="flex justify-between"><Skeleton className="h-5 w-20" /><Skeleton className="h-5 w-24" /></div>
-            <Skeleton className="h-5 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-            <div className="grid grid-cols-2 gap-2"><Skeleton className="h-16 rounded-xl" /><Skeleton className="h-16 rounded-xl" /></div>
-            <Skeleton className="h-12 w-full rounded-xl" />
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Helper para detectar el tipo de metadata
-function isNFTMetadata(meta: any): meta is NFTMetadataJSON {
-  return meta && typeof meta === 'object' && 'attributes' in meta && Array.isArray(meta.attributes);
-}
-
-function isLegacyMetadata(meta: any): meta is MuSecureMetadata {
-  return meta && typeof meta === 'object' && 'encryptedAudio' in meta;
-}
-
-// Helper para extraer título
-function extractTitle(meta: AnyMetadata | undefined): string | null {
-  if (!meta) return null;
-  if (isNFTMetadata(meta)) return meta.name || null;
-  if (isLegacyMetadata(meta)) return meta.title || null;
-  return null;
-}
-
-// Helper para extraer artista
-function extractArtist(meta: AnyMetadata | undefined): string | null {
-  if (!meta) return null;
-  if (isNFTMetadata(meta)) {
-    const artistAttr = meta.attributes?.find(
-      attr => attr.trait_type === "Artista" || attr.trait_type === "Artist"
-    );
-    return artistAttr?.value?.toString() || null;
-  }
-  if (isLegacyMetadata(meta)) return meta.artist || null;
-  return null;
-}
-
-// Helper para extraer info de audio
-function extractAudioInfo(meta: AnyMetadata | undefined): { 
-  isEncrypted: boolean; 
-  audioCid: string;
-  mimeType: string;
-} {
-  if (!meta) return { isEncrypted: false, audioCid: "", mimeType: "audio/mpeg" };
-  
-  if (isNFTMetadata(meta)) {
-    const hasAudio = meta.animation_url && meta.animation_url !== "";
-    const isEncrypted = !hasAudio;
-    const audioCid = hasAudio ? meta.animation_url.replace("ipfs://", "") : "";
-    const mimeTypeAttr = meta.attributes?.find(
-      attr => attr.trait_type === "Tipo de Archivo" || attr.trait_type === "MimeType"
-    );
-    return { isEncrypted, audioCid, mimeType: mimeTypeAttr?.value?.toString() || "audio/mpeg" };
-  }
-  
-  if (isLegacyMetadata(meta)) {
-    return {
-      isEncrypted: meta.encryptedAudio?.encrypted ?? false,
-      audioCid: meta.encryptedAudio?.ciphertextCid ?? "",
-      mimeType: (meta.encryptedAudio as any)?.mimeType ?? "audio/mpeg"
-    };
-  }
-  
-  return { isEncrypted: false, audioCid: "", mimeType: "audio/mpeg" };
 }
 
 export function Dashboard() {
-  const { ready, authenticated, login } = usePrivy();
-  const { address, signMessage } = useWallet();
-
+  const { authenticated, login } = usePrivy();
+  const { address, signMessage, isReady } = useWallet();
+  
+  // Estados de datos y filtros
   const [works, setWorks] = useState<WorkItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showOnlyMine, setShowOnlyMine] = useState(true);
 
-  const loadWorks = useCallback(async (ownerAddress: string) => {
-    setLoading(true);
+  const fetchWorks = useCallback(async () => {
+    // Si queremos filtrar por "Mio" pero no hay wallet, forzamos "Todos" o paramos
+    if (showOnlyMine && !address) return;
+    
     setError(null);
-    setWorks([]);
-    try {
-      const registryAddress = import.meta.env.VITE_REGISTRY_ADDRESS as string;
-      if (!registryAddress) throw new Error("Falta VITE_REGISTRY_ADDRESS en .env");
-      const rpc = (import.meta.env.VITE_ARBITRUM_RPC as string) ?? "https://sepolia-rollup.arbitrum.io/rpc";
-      const provider = new ethers.JsonRpcProvider(rpc);
-      const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, provider);
-      const filter = registry.filters.WorkRegistered(ownerAddress);
-      const logs = await registry.queryFilter(filter, 0, "latest");
+    setRefreshing(true);
 
-      const items: WorkItem[] = (logs as any[])
-        .map((log) => {
-          const parsed = registry.interface.parseLog(log);
-          if (!parsed) return null;
-          const { fingerprintHash, ipfsCid, authenticityScore, riskLevel, tokenId, timestamp } = parsed.args;
-          return {
-            fingerprintHash, ipfsCid,
-            authenticityScore: Number(authenticityScore),
-            riskLevel: Number(riskLevel),
-            tokenId: Number(tokenId),
-            timestamp: Number(timestamp) * 1000,
-            txHash: log.transactionHash,
-            metaLoading: true,
-          } as WorkItem;
-        })
-        .filter(Boolean) as WorkItem[];
+    const RPC_ENDPOINTS = [
+      "https://sepolia-rollup.arbitrum.io/rpc", 
+      import.meta.env.VITE_RPC_URL 
+    ].filter(Boolean);
 
-      items.sort((a, b) => b.timestamp - a.timestamp);
-      setWorks(items);
+    let logs: any[] = [];
+    let success = false;
 
-      // Cargar registros de localStorage para fallback
-      const localRecords = JSON.parse(localStorage.getItem('musecure:uploads') || '[]');
-      
-      items.forEach((item) => {
-        const itemCid = item.ipfsCid;
-        const url = LighthouseService.gatewayUrl(itemCid);
+    for (const url of RPC_ENDPOINTS) {
+      if (success) break;
+      try {
+        const provider = new ethers.JsonRpcProvider(url, undefined, { staticNetwork: true });
+        const contract = new ethers.Contract(import.meta.env.VITE_REGISTRY_ADDRESS, REGISTRY_ABI, provider);
         
-        fetch(url)
-          .then(async (r) => {
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const contentType = r.headers.get("content-type");
-            if (!contentType?.includes("application/json")) {
-              throw new Error("Invalid content type");
-            }
-            return r.json();
-          })
-          .then((meta: AnyMetadata) => {
+        // 🪄 DINAMISMO AQUÍ: 
+        // Si showOnlyMine es true -> Filtramos por address del usuario.
+        // Si es false -> Filtramos por null (trae todos los eventos del contrato).
+        const filter = contract.filters.WorkRegistered(showOnlyMine ? ethers.getAddress(address!) : null);
+        //desde la creacion de mi contrato
+        logs = await contract.queryFilter(filter, DEPLOY_BLOCK, "latest");
+        success = true;
+      } catch (e) {
+        console.warn(`RPC Error en ${url}`);
+      }
+    }
+
+    if (!success) {
+      setError("Error de conexión con Arbitrum Sepolia.");
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    try {
+      const items: WorkItem[] = logs.map((log) => {
+        const { author, ipfsCid, authenticityScore, riskLevel, tokenId, timestamp } = log.args;
+        const cleanCid = String(ipfsCid).trim().replace("ipfs://", "").split("?")[0].split("/")[0];
+
+        return {
+          tokenId: Number(tokenId),
+          metadataCid: cleanCid,
+          audioCid: "",
+          authenticityScore: Number(authenticityScore),
+          riskLevel: Number(riskLevel),
+          timestamp: Number(timestamp) * 1000,
+          txHash: log.transactionHash,
+          author: author,
+          title: `Obra #${Number(tokenId)}`,
+          artist: "...",
+          isEncrypted: false,
+          metaLoading: true,
+        };
+      });
+
+      setWorks(items.sort((a, b) => b.timestamp - a.timestamp));
+
+      // Carga asíncrona de metadata
+      items.forEach((item) => {
+        fetch(LighthouseService.gatewayUrl(item.metadataCid))
+          .then((r) => r.json())
+          .then((meta: MuSecureMetadata & { name?: string; attributes?: any[] }) => {
+            const audioCid = (meta.encryptedAudio?.ciphertextCid ?? (meta as any).animation_url ?? "").replace("ipfs://", "");
+            const isEncrypted = !!(meta.encryptedAudio?.encrypted || meta.attributes?.some(a => a.value === "Cifrado" || a.value === true));
+
             setWorks((prev) => prev.map((w) =>
-              w.ipfsCid === itemCid ? { ...w, metadata: meta, metaLoading: false } : w
+              w.tokenId === item.tokenId
+                ? { ...w, audioCid, isEncrypted, title: meta.title ?? meta.name ?? w.title, artist: meta.artist ?? "—", metaLoading: false }
+                : w
             ));
           })
-          .catch(async (err) => {
-            console.warn(`⚠️ CID ${itemCid} falló, buscando en localStorage...`);
-            
-            // Intentar recuperar de localStorage
-            const matchingRecord = localRecords.find((r: any) => {
-              // Buscar por timestamp cercano (±1 hora)
-              const recordTime = r.uploadedAt;
-              const itemTime = item.timestamp;
-              return Math.abs(recordTime - itemTime) < 3600000; // 1 hora de diferencia
-            });
-            
-            if (matchingRecord) {
-              console.log(`✅ Recuperado de localStorage para #${item.tokenId}:`, matchingRecord.title);
-              
-              // Construir metadata desde el registro local
-              const recoveredMeta: MuSecureMetadata = {
-                schemaVersion: "1.0",
-                title: matchingRecord.title,
-                artist: matchingRecord.artist,
-                createdAt: new Date(matchingRecord.uploadedAt).toISOString(),
-                ownerAddress: matchingRecord.ownerAddress,
-                fingerprint: { sha256: "", data: [], durationSec: 0, algorithm: "musecure-v1" },
-                encryptedAudio: {
-                  ciphertextCid: matchingRecord.audioCid,
-                  encrypted: matchingRecord.encrypted,
-                  dataToEncryptHash: "",
-                  accessConditions: null,
-                  litNetwork: null,
-                  originalFileName: "",
-                  mimeType: "audio/mpeg",
-                  originalSizeBytes: 0
-                }
-              };
-              
-              setWorks((prev) => prev.map((w) =>
-                w.ipfsCid === itemCid ? { 
-                  ...w, 
-                  metadata: recoveredMeta, 
-                  metaLoading: false,
-                  recoveredFromLocal: true 
-                } : w
-              ));
-            } else {
-              setWorks((prev) => prev.map((w) =>
-                w.ipfsCid === itemCid
-                  ? { ...w, metaLoading: false, metaError: "Metadata no disponible" }
-                  : w
-              ));
-            }
+          .catch(() => {
+            setWorks((prev) => prev.map((w) =>
+              w.tokenId === item.tokenId ? { ...w, metaLoading: false } : w
+            ));
           });
       });
     } catch (e) {
-      setError((e as Error).message);
+      setError("Error al procesar los datos de la obra.");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, []);
+  }, [address, showOnlyMine]);
 
   useEffect(() => {
-    if (ready && authenticated && address) {
-      loadWorks(address);
-    } else {
-      setWorks([]);
+    if (authenticated) {
+      fetchWorks();
     }
-  }, [ready, authenticated, address, loadWorks]);
+  }, [authenticated, fetchWorks]);
 
-  if (!ready || loading) return <DashboardSkeleton />;
-
-  if (!authenticated) return (
-    <div className="flex flex-col items-center gap-4 py-24 border border-dashed border-emerald-500/20 rounded-3xl">
-      <p className="font-mono text-xs uppercase tracking-wider text-emerald-500/60">Conecta tu wallet para ver tus obras</p>
-      <Button onClick={login}><Shield className="h-3.5 w-3.5" />Conectar Wallet</Button>
-    </div>
-  );
+  if (!authenticated) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-24 border border-dashed border-emerald-500/20 rounded-[3rem] mt-4 bg-zinc-900/10">
+        <Music className="h-10 w-10 text-zinc-700" />
+        <Button onClick={login} className="rounded-2xl bg-emerald-600 hover:bg-emerald-500">
+          <Shield className="h-4 w-4 mr-2" /> Conectar para entrar al Dashboard
+        </Button>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8 pt-4 pb-12">
+      {/* HEADER CON TOGGLE */}
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="font-display text-xl font-bold text-white">Mis Obras</h2>
-          <p className="mt-1 font-mono text-[11px] uppercase tracking-wider text-emerald-500/60">Arbitrum Sepolia Ledger</p>
+          <h2 className="font-display text-2xl font-bold text-white tracking-tight">
+            {showOnlyMine ? "Mis Protecciones" : "Explorar Obras"}
+          </h2>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-emerald-500/60 mt-1">
+            {showOnlyMine ? `Wallet: ${address?.slice(0,6)}...${address?.slice(-4)}` : "Protocolo Global MuSecure"}
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          {address && (
-            <div className="rounded-xl border border-surface-border bg-surface-raised px-4 py-2">
-              <span className="font-mono text-xs text-emerald-500">{address.slice(0, 6)}...{address.slice(-4)}</span>
-            </div>
-          )}
-          <Button variant="secondary" size="icon" onClick={() => address && loadWorks(address)} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+
+        <div className="flex items-center gap-4 bg-zinc-900/50 p-2 rounded-2xl border border-zinc-800">
+          <div className="flex items-center space-x-2 px-2">
+            <Globe className={`h-3.5 w-3.5 ${!showOnlyMine ? "text-emerald-500" : "text-zinc-600"}`} />
+            <Switch 
+              id="view-filter" 
+              checked={showOnlyMine} 
+              onCheckedChange={setShowOnlyMine} 
+            />
+            <User className={`h-3.5 w-3.5 ${showOnlyMine ? "text-emerald-500" : "text-zinc-600"}`} />
+            <Label htmlFor="view-filter" className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 cursor-pointer">
+              {showOnlyMine ? "Solo yo" : "Todos"}
+            </Label>
+          </div>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={fetchWorks} 
+            disabled={refreshing} 
+            className="h-8 w-8 rounded-xl hover:bg-zinc-800"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 text-emerald-500 ${refreshing ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-center font-mono text-xs text-red-400">{error}</div>
-      )}
+      {error && <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-center font-mono text-[10px] text-red-400">{error}</div>}
 
-      {works.length === 0 && !loading && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-4 py-24">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-raised">
-            <Music className="h-7 w-7 text-zinc-600" />
-          </div>
-          <p className="font-mono text-xs uppercase tracking-wider text-zinc-600">No tienes obras registradas</p>
-        </motion.div>
-      )}
-
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {works.map((item, index) => {
-          const title = extractTitle(item.metadata);
-          const artist = extractArtist(item.metadata);
-          const { isEncrypted, audioCid, mimeType } = extractAudioInfo(item.metadata);
-          
-          let displayTitle = `Obra #${item.tokenId}`;
-          let displaySubtitle = "";
-          
-          if (item.metaLoading) {
-            displayTitle = "Cargando...";
-          } else if (title) {
-            displayTitle = title;
-            displaySubtitle = artist || "";
-            if (item.recoveredFromLocal) {
-              displaySubtitle += " 📦";
-            }
-          } else if (item.metaError) {
-            displayTitle = `Obra #${item.tokenId}`;
-            displaySubtitle = item.metaError;
-          } else {
-            displayTitle = `Obra #${item.tokenId}`;
-            displaySubtitle = "Metadata no disponible";
-          }
-          
-          const publicAudioUrl = audioCid ? LighthouseService.audioUrl(audioCid, mimeType) : "";
-          const audioNotReady = !item.metaLoading && !audioCid && !isEncrypted;
-          const hasError = !!item.metaError && !item.recoveredFromLocal;
-
-          return (
-            <motion.div
-              key={item.tokenId}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: index * 0.06 }}
-            >
-              <Card className={`group flex h-full flex-col hover:border-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/5 ${hasError ? 'border-amber-500/20' : ''}`}>
-                <div className="mb-6 flex items-center justify-between">
-                  <Badge>NFT #{item.tokenId}</Badge>
-                  <div className="flex items-center gap-2">
-                    {item.recoveredFromLocal && (
-                      <div className="flex items-center gap-1 text-blue-400" title="Recuperado de caché local">
-                        <Database className="h-3 w-3" />
-                      </div>
-                    )}
-                    {hasError && (
-                      <div className="flex items-center gap-1 text-amber-500" title={item.metaError}>
-                        <AlertCircle className="h-3 w-3" />
-                      </div>
-                    )}
-                    <Badge variant={RISK_VARIANT[item.riskLevel] ?? "secondary"}>{RISK_LABEL[item.riskLevel]}</Badge>
-                  </div>
-                </div>
-
-                {item.metaLoading ? (
-                  <div className="space-y-2 mb-6">
-                    <Skeleton className="h-5 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
-                  </div>
-                ) : (
-                  <>
-                    <h3 className="truncate font-display text-base font-bold uppercase tracking-tight text-white">
-                      {displayTitle}
-                    </h3>
-                    <p className={`mt-1 mb-6 font-mono text-[11px] font-semibold uppercase ${hasError ? 'text-amber-500/70' : 'text-emerald-500/70'}`}>
-                      {displaySubtitle}
-                    </p>
-                  </>
-                )}
-
-                <div className="mb-6 grid grid-cols-2 gap-2">
-                  <div className="rounded-xl border border-emerald-500/10 bg-emerald-500/[0.03] p-3">
-                    <p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Score</p>
-                    <p className="mt-1 font-display text-sm font-bold text-white">{item.authenticityScore}%</p>
-                  </div>
-                  <div className="rounded-xl border border-emerald-500/10 bg-emerald-500/[0.03] p-3">
-                    <p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Visibilidad</p>
-                    <p className="mt-1 font-display text-sm font-bold text-emerald-500">
-                      {item.metaLoading ? "..." : isEncrypted ? "Privado" : "Público"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-auto">
-                  {item.metaLoading ? (
-                    <Skeleton className="h-14 w-full rounded-2xl" />
-                  ) : hasError ? (
-                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-center">
-                      <p className="text-xs text-amber-400">Metadata no disponible</p>
-                      <p className="mt-1 font-mono text-[10px] text-zinc-500 truncate">{item.ipfsCid}</p>
-                    </div>
-                  ) : isEncrypted ? (
-                    authenticated && address && signMessage ? (
-                      <EncryptedAudioPlayer 
-                        cid={audioCid} 
-                        ownerAddress={address} 
-                        signMessage={signMessage} 
-                      />
-                    ) : (
-                      <Button onClick={() => login()} className="w-full">
-                        <Shield className="h-3.5 w-3.5" />Conectar Wallet
-                      </Button>
-                    )
-                  ) : (
-                    <a
-                      href={publicAudioUrl || undefined}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={[
-                        "group/play flex w-full items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 no-underline transition-all",
-                        audioNotReady
-                          ? "pointer-events-none opacity-40"
-                          : "hover:border-emerald-500/40 hover:bg-emerald-500/10",
-                      ].join(" ")}
-                    >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500 shadow-lg shadow-emerald-500/25">
-                        <Headphones className="h-4 w-4 text-black" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-white">Escuchar</p>
-                        <p className="font-mono text-[10px] text-zinc-500 truncate">
-                          {audioNotReady ? "Audio no disponible" : "Abrir en IPFS Gateway"}
-                        </p>
-                      </div>
-                      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-emerald-500/40" />
-                    </a>
-                  )}
-                </div>
-
-                <a
-                  href={`https://sepolia.arbiscan.io/tx/${item.txHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-6 flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-600 no-underline transition-colors hover:text-emerald-500"
-                >
-                  Blockchain Proof <ExternalLink className="h-2.5 w-2.5" />
-                </a>
-              </Card>
+      {loading && !refreshing ? (
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-64 rounded-[2.5rem] bg-zinc-900/50" />)}
+        </div>
+      ) : (
+        <>
+          {works.length === 0 ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-4 py-32 border border-zinc-900 rounded-[3rem]">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900 border border-zinc-800 opacity-20">
+                <Music className="h-8 w-8 text-white" />
+              </div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-zinc-600">Nada que mostrar aquí</p>
             </motion.div>
-          );
-        })}
-      </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              <AnimatePresence mode="popLayout">
+                {works.map((item, index) => (
+                  <motion.div 
+                    key={item.tokenId} 
+                    layout
+                    initial={{ opacity: 0, scale: 0.9 }} 
+                    animate={{ opacity: 1, scale: 1 }} 
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ duration: 0.2, delay: index * 0.03 }}
+                  >
+                    <Card className="flex h-full flex-col border-zinc-800 bg-zinc-900/30 p-6 hover:border-emerald-500/30 transition-all backdrop-blur-sm relative overflow-hidden group">
+                      {/* Badge de "Tu obra" si es del usuario logueado */}
+                      {address && item.author.toLowerCase() === address.toLowerCase() && (
+                        <div className="absolute -right-8 -top-8 bg-emerald-500/10 p-10 rotate-45 border border-emerald-500/20">
+                           <User className="h-3 w-3 text-emerald-500 -rotate-45 translate-y-2" />
+                        </div>
+                      )}
+
+                      <div className="mb-6 flex items-center justify-between">
+                        <Badge variant="secondary" className="font-mono text-[9px] tracking-tighter uppercase">NFT #{item.tokenId}</Badge>
+                        <Badge variant={getRiskVariant(item.riskLevel)} className="text-[9px]">
+                          {RISK_LABEL[item.riskLevel]}
+                        </Badge>
+                      </div>
+
+                      <div className="flex-1">
+                        {item.metaLoading ? (
+                          <div className="space-y-2 mb-6"><Skeleton className="h-5 w-3/4 bg-zinc-800" /><Skeleton className="h-3 w-1/2 bg-zinc-800" /></div>
+                        ) : (
+                          <>
+                            <h3 className="truncate font-display text-lg font-bold text-white tracking-tight uppercase group-hover:text-emerald-400 transition-colors">{item.title}</h3>
+                            <p className="mt-1 mb-6 font-mono text-[10px] uppercase tracking-widest text-zinc-500 italic">By {item.artist}</p>
+                          </>
+                        )}
+
+                        <div className="mb-6 grid grid-cols-2 gap-2">
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
+                            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Score</p>
+                            <p className="mt-1 font-display text-sm font-bold text-white">{item.authenticityScore}%</p>
+                          </div>
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
+                            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Privacidad</p>
+                            <p className="mt-1 font-display text-sm font-bold text-emerald-500/80">{item.isEncrypted ? "Cifrado" : "Público"}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-auto space-y-4">
+                        {!item.metaLoading && (
+                          item.isEncrypted ? (
+                            isReady && address && signMessage ? (
+                              <EncryptedAudioPlayer cid={item.audioCid} ownerAddress={address} signMessage={signMessage} />
+                            ) : (
+                              <Button onClick={login} className="w-full rounded-2xl bg-zinc-800 border-zinc-700 hover:bg-zinc-700" variant="secondary">
+                                <Shield className="h-3.5 w-3.5 mr-2" /> Desbloquear
+                              </Button>
+                            )
+                          ) : item.audioCid ? (
+                            <a href={LighthouseService.audioUrl(item.audioCid)} target="_blank" className="flex w-full items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 hover:bg-emerald-500/10 transition-colors group/btn no-underline">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-black shadow-lg shadow-emerald-500/10 group-hover/btn:scale-105 transition-transform"><Headphones className="h-4 w-4" /></div>
+                              <div className="flex-1 text-left"><p className="text-sm font-bold text-white m-0">Reproducir</p><p className="font-mono text-[9px] text-zinc-500 m-0">Open IPFS</p></div>
+                              <ExternalLink className="h-3.5 w-3.5 text-zinc-600 group-hover/btn:text-emerald-500" />
+                            </a>
+                          ) : (
+                            <div className="text-center py-4 border border-zinc-800 rounded-2xl opacity-40">
+                              <p className="font-mono text-[9px] uppercase tracking-widest">Sin Audio CID</p>
+                            </div>
+                          )
+                        )}
+                        <a href={`https://sepolia.arbiscan.io/tx/${item.txHash}`} target="_blank" className="flex items-center justify-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-700 hover:text-emerald-500 transition-colors no-underline">
+                          Blockchain Proof <ExternalLink className="h-2 w-2" />
+                        </a>
+                      </div>
+                    </Card>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

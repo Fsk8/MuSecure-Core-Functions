@@ -217,12 +217,7 @@ export function EncryptedAudioPlayer({ cid, ownerAddress, signMessage }: Props) 
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
           >
-            <Button
-              onClick={handleDecrypt}
-              disabled={isLoading || !cid}
-              variant="violet"
-              className="w-full h-12"
-            >
+            <Button onClick={handleDecrypt} disabled={isLoading || !cid} className="w-full h-12 bg-violet-600 hover:bg-violet-700 text-white">
               {isLoading ? (
                 <motion.span
                   animate={{ rotate: 360 }}
