@@ -1,5 +1,7 @@
 /**
  * MuSecure – Dashboard v3 (Feed Global + Filtro Personal)
+ * Versión Segura: Switch manual con Tailwind para evitar conflictos de librerías.
+ * CORRECCIÓN: Mapeo de metadata para nombres de artista y títulos dinámicos.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -12,10 +14,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { motion, AnimatePresence } from "motion/react";
-import { RefreshCw, ExternalLink, Shield, Music, Headphones, AlertCircle, Globe, User } from "lucide-react";
+import { RefreshCw, ExternalLink, Shield, Music, Headphones, Globe, User } from "lucide-react";
 import type { MuSecureMetadata } from "@/types/ipfs";
 
 const REGISTRY_ABI = [
@@ -24,7 +24,7 @@ const REGISTRY_ABI = [
 
 const RISK_LABEL = ["Bajo Riesgo", "Riesgo Medio", "Alto Riesgo", "Bloqueado"];
 
-const DEPLOY_BLOCK = 75000000; 
+const DEPLOY_BLOCK = 255365885; 
 
 const getRiskVariant = (level: number): "success" | "warning" | "danger" | "violet" | "secondary" => {
   switch (level) {
@@ -44,19 +44,17 @@ interface WorkItem {
   riskLevel: number;
   timestamp: number;
   txHash: string;
+  author: string;
   title: string;
   artist: string;
-  author: string; // Guardamos quien lo subió
   isEncrypted: boolean;
   metaLoading: boolean;
-  metaError?: string;
 }
 
 export function Dashboard() {
   const { authenticated, login } = usePrivy();
   const { address, signMessage, isReady } = useWallet();
   
-  // Estados de datos y filtros
   const [works, setWorks] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -64,7 +62,6 @@ export function Dashboard() {
   const [showOnlyMine, setShowOnlyMine] = useState(true);
 
   const fetchWorks = useCallback(async () => {
-    // Si queremos filtrar por "Mio" pero no hay wallet, forzamos "Todos" o paramos
     if (showOnlyMine && !address) return;
     
     setError(null);
@@ -84,20 +81,17 @@ export function Dashboard() {
         const provider = new ethers.JsonRpcProvider(url, undefined, { staticNetwork: true });
         const contract = new ethers.Contract(import.meta.env.VITE_REGISTRY_ADDRESS, REGISTRY_ABI, provider);
         
-        // 🪄 DINAMISMO AQUÍ: 
-        // Si showOnlyMine es true -> Filtramos por address del usuario.
-        // Si es false -> Filtramos por null (trae todos los eventos del contrato).
         const filter = contract.filters.WorkRegistered(showOnlyMine ? ethers.getAddress(address!) : null);
-        //desde la creacion de mi contrato
+        
         logs = await contract.queryFilter(filter, DEPLOY_BLOCK, "latest");
         success = true;
       } catch (e) {
-        console.warn(`RPC Error en ${url}`);
+        console.warn(`RPC Falló: ${url}`);
       }
     }
 
     if (!success) {
-      setError("Error de conexión con Arbitrum Sepolia.");
+      setError("Error de red. Prueba sincronizar de nuevo.");
       setLoading(false);
       setRefreshing(false);
       return;
@@ -126,7 +120,6 @@ export function Dashboard() {
 
       setWorks(items.sort((a, b) => b.timestamp - a.timestamp));
 
-      // Carga asíncrona de metadata
       items.forEach((item) => {
         fetch(LighthouseService.gatewayUrl(item.metadataCid))
           .then((r) => r.json())
@@ -134,9 +127,14 @@ export function Dashboard() {
             const audioCid = (meta.encryptedAudio?.ciphertextCid ?? (meta as any).animation_url ?? "").replace("ipfs://", "");
             const isEncrypted = !!(meta.encryptedAudio?.encrypted || meta.attributes?.some(a => a.value === "Cifrado" || a.value === true));
 
+            // Búsqueda robusta de Artista en los atributos si no viene en la raíz
+            const attrArtist = meta.attributes?.find(a => a.trait_type === "Artista")?.value;
+            const finalArtist = meta.artist || attrArtist || "Unknown Artist";
+            const finalTitle = meta.title || meta.name || item.title;
+
             setWorks((prev) => prev.map((w) =>
               w.tokenId === item.tokenId
-                ? { ...w, audioCid, isEncrypted, title: meta.title ?? meta.name ?? w.title, artist: meta.artist ?? "—", metaLoading: false }
+                ? { ...w, audioCid, isEncrypted, title: finalTitle, artist: finalArtist, metaLoading: false }
                 : w
             ));
           })
@@ -147,7 +145,7 @@ export function Dashboard() {
           });
       });
     } catch (e) {
-      setError("Error al procesar los datos de la obra.");
+      setError("Error al procesar registros.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -155,48 +153,49 @@ export function Dashboard() {
   }, [address, showOnlyMine]);
 
   useEffect(() => {
-    if (authenticated) {
-      fetchWorks();
-    }
+    if (authenticated) fetchWorks();
   }, [authenticated, fetchWorks]);
 
   if (!authenticated) {
     return (
       <div className="flex flex-col items-center gap-4 py-24 border border-dashed border-emerald-500/20 rounded-[3rem] mt-4 bg-zinc-900/10">
         <Music className="h-10 w-10 text-zinc-700" />
-        <Button onClick={login} className="rounded-2xl bg-emerald-600 hover:bg-emerald-500">
-          <Shield className="h-4 w-4 mr-2" /> Conectar para entrar al Dashboard
-        </Button>
+        <Button onClick={login} className="rounded-2xl">Conectar Wallet</Button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 pt-4 pb-12">
-      {/* HEADER CON TOGGLE */}
+    <div className="space-y-8 pt-4 pb-12 px-4 sm:px-0">
       <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-display text-2xl font-bold text-white tracking-tight">
             {showOnlyMine ? "Mis Protecciones" : "Explorar Obras"}
           </h2>
           <p className="font-mono text-[10px] uppercase tracking-widest text-emerald-500/60 mt-1">
-            {showOnlyMine ? `Wallet: ${address?.slice(0,6)}...${address?.slice(-4)}` : "Protocolo Global MuSecure"}
+             Arbitrum Sepolia Ledger
           </p>
         </div>
 
-        <div className="flex items-center gap-4 bg-zinc-900/50 p-2 rounded-2xl border border-zinc-800">
-          <div className="flex items-center space-x-2 px-2">
-            <Globe className={`h-3.5 w-3.5 ${!showOnlyMine ? "text-emerald-500" : "text-zinc-600"}`} />
-            <Switch 
-              id="view-filter" 
-              checked={showOnlyMine} 
-              onCheckedChange={setShowOnlyMine} 
-            />
-            <User className={`h-3.5 w-3.5 ${showOnlyMine ? "text-emerald-500" : "text-zinc-600"}`} />
-            <Label htmlFor="view-filter" className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 cursor-pointer">
-              {showOnlyMine ? "Solo yo" : "Todos"}
-            </Label>
+        <div className="flex items-center gap-4 bg-zinc-900/80 p-1.5 rounded-2xl border border-zinc-800 shadow-xl">
+          <div className="flex items-center gap-3 px-3">
+            <Globe className={`h-3.5 w-3.5 transition-colors ${!showOnlyMine ? "text-emerald-500" : "text-zinc-600"}`} />
+            
+            <label className="relative inline-flex cursor-pointer items-center">
+              <input 
+                type="checkbox" 
+                className="sr-only peer" 
+                checked={showOnlyMine}
+                onChange={() => setShowOnlyMine(!showOnlyMine)}
+              />
+              <div className="h-5 w-9 rounded-full bg-zinc-800 border border-zinc-700 peer-checked:bg-emerald-600 peer-checked:border-emerald-500 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-zinc-400 after:transition-all peer-checked:after:translate-x-full peer-checked:after:bg-white content-['']"></div>
+            </label>
+
+            <User className={`h-3.5 w-3.5 transition-colors ${showOnlyMine ? "text-emerald-500" : "text-zinc-600"}`} />
           </div>
+
+          <div className="h-6 w-[1px] bg-zinc-800"></div>
+
           <Button 
             variant="ghost" 
             size="icon" 
@@ -209,103 +208,90 @@ export function Dashboard() {
         </div>
       </div>
 
-      {error && <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-center font-mono text-[10px] text-red-400">{error}</div>}
-
       {loading && !refreshing ? (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-64 rounded-[2.5rem] bg-zinc-900/50" />)}
         </div>
       ) : (
-        <>
-          {works.length === 0 ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-4 py-32 border border-zinc-900 rounded-[3rem]">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900 border border-zinc-800 opacity-20">
-                <Music className="h-8 w-8 text-white" />
-              </div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-zinc-600">Nada que mostrar aquí</p>
-            </motion.div>
-          ) : (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              <AnimatePresence mode="popLayout">
-                {works.map((item, index) => (
-                  <motion.div 
-                    key={item.tokenId} 
-                    layout
-                    initial={{ opacity: 0, scale: 0.9 }} 
-                    animate={{ opacity: 1, scale: 1 }} 
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.2, delay: index * 0.03 }}
-                  >
-                    <Card className="flex h-full flex-col border-zinc-800 bg-zinc-900/30 p-6 hover:border-emerald-500/30 transition-all backdrop-blur-sm relative overflow-hidden group">
-                      {/* Badge de "Tu obra" si es del usuario logueado */}
-                      {address && item.author.toLowerCase() === address.toLowerCase() && (
-                        <div className="absolute -right-8 -top-8 bg-emerald-500/10 p-10 rotate-45 border border-emerald-500/20">
-                           <User className="h-3 w-3 text-emerald-500 -rotate-45 translate-y-2" />
-                        </div>
-                      )}
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <AnimatePresence mode="popLayout">
+            {works.map((item, index) => (
+              <motion.div 
+                key={item.tokenId} 
+                layout
+                initial={{ opacity: 0, scale: 0.95 }} 
+                animate={{ opacity: 1, scale: 1 }} 
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Card className="flex h-full flex-col border-zinc-800 bg-zinc-900/30 p-6 hover:border-emerald-500/30 transition-all backdrop-blur-sm relative group overflow-hidden">
+                  
+                  {address && item.author.toLowerCase() === address.toLowerCase() && (
+                    <div className="absolute top-0 right-0 p-2">
+                       <Badge variant="success" className="text-[8px] h-4 px-1 opacity-50">TÚ</Badge>
+                    </div>
+                  )}
 
-                      <div className="mb-6 flex items-center justify-between">
-                        <Badge variant="secondary" className="font-mono text-[9px] tracking-tighter uppercase">NFT #{item.tokenId}</Badge>
-                        <Badge variant={getRiskVariant(item.riskLevel)} className="text-[9px]">
-                          {RISK_LABEL[item.riskLevel]}
-                        </Badge>
+                  <div className="mb-6 flex items-center justify-between">
+                    <Badge variant="secondary" className="font-mono text-[9px]">ID #{item.tokenId}</Badge>
+                    <Badge variant={getRiskVariant(item.riskLevel)}>
+                      {RISK_LABEL[item.riskLevel]}
+                    </Badge>
+                  </div>
+
+                  <div className="flex-1">
+                    {item.metaLoading ? (
+                      <div className="space-y-2 mb-6"><Skeleton className="h-5 w-3/4 bg-zinc-800" /><Skeleton className="h-3 w-1/2 bg-zinc-800" /></div>
+                    ) : (
+                      <>
+                        <h3 className="truncate font-display text-lg font-bold text-white tracking-tight uppercase group-hover:text-emerald-400 transition-colors">{item.title}</h3>
+                        <p className="mt-1 mb-6 font-mono text-[10px] uppercase tracking-widest text-zinc-500 italic">By {item.artist}</p>
+                      </>
+                    )}
+
+                    <div className="mb-6 grid grid-cols-2 gap-2">
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
+                        <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Score</p>
+                        <p className="mt-1 font-display text-sm font-bold text-white">{item.authenticityScore}%</p>
                       </div>
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
+                        <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Visibilidad</p>
+                        <p className="mt-1 font-display text-sm font-bold text-emerald-500/80">{item.isEncrypted ? "Cifrado" : "Público"}</p>
+                      </div>
+                    </div>
+                  </div>
 
-                      <div className="flex-1">
-                        {item.metaLoading ? (
-                          <div className="space-y-2 mb-6"><Skeleton className="h-5 w-3/4 bg-zinc-800" /><Skeleton className="h-3 w-1/2 bg-zinc-800" /></div>
+                  <div className="mt-auto space-y-4">
+                    {!item.metaLoading && (
+                      item.isEncrypted ? (
+                        isReady && address && signMessage ? (
+                          <EncryptedAudioPlayer cid={item.audioCid} ownerAddress={address} signMessage={signMessage} />
                         ) : (
-                          <>
-                            <h3 className="truncate font-display text-lg font-bold text-white tracking-tight uppercase group-hover:text-emerald-400 transition-colors">{item.title}</h3>
-                            <p className="mt-1 mb-6 font-mono text-[10px] uppercase tracking-widest text-zinc-500 italic">By {item.artist}</p>
-                          </>
-                        )}
-
-                        <div className="mb-6 grid grid-cols-2 gap-2">
-                          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
-                            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Score</p>
-                            <p className="mt-1 font-display text-sm font-bold text-white">{item.authenticityScore}%</p>
-                          </div>
-                          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
-                            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Privacidad</p>
-                            <p className="mt-1 font-display text-sm font-bold text-emerald-500/80">{item.isEncrypted ? "Cifrado" : "Público"}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-auto space-y-4">
-                        {!item.metaLoading && (
-                          item.isEncrypted ? (
-                            isReady && address && signMessage ? (
-                              <EncryptedAudioPlayer cid={item.audioCid} ownerAddress={address} signMessage={signMessage} />
-                            ) : (
-                              <Button onClick={login} className="w-full rounded-2xl bg-zinc-800 border-zinc-700 hover:bg-zinc-700" variant="secondary">
-                                <Shield className="h-3.5 w-3.5 mr-2" /> Desbloquear
-                              </Button>
-                            )
-                          ) : item.audioCid ? (
-                            <a href={LighthouseService.audioUrl(item.audioCid)} target="_blank" className="flex w-full items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 hover:bg-emerald-500/10 transition-colors group/btn no-underline">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-black shadow-lg shadow-emerald-500/10 group-hover/btn:scale-105 transition-transform"><Headphones className="h-4 w-4" /></div>
-                              <div className="flex-1 text-left"><p className="text-sm font-bold text-white m-0">Reproducir</p><p className="font-mono text-[9px] text-zinc-500 m-0">Open IPFS</p></div>
-                              <ExternalLink className="h-3.5 w-3.5 text-zinc-600 group-hover/btn:text-emerald-500" />
-                            </a>
-                          ) : (
-                            <div className="text-center py-4 border border-zinc-800 rounded-2xl opacity-40">
-                              <p className="font-mono text-[9px] uppercase tracking-widest">Sin Audio CID</p>
-                            </div>
-                          )
-                        )}
-                        <a href={`https://sepolia.arbiscan.io/tx/${item.txHash}`} target="_blank" className="flex items-center justify-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-700 hover:text-emerald-500 transition-colors no-underline">
-                          Blockchain Proof <ExternalLink className="h-2 w-2" />
+                          <Button onClick={login} className="w-full rounded-2xl bg-zinc-800 border-zinc-700 hover:bg-zinc-700" variant="secondary">
+                            <Shield className="h-3.5 w-3.5 mr-2" /> Desbloquear
+                          </Button>
+                        )
+                      ) : item.audioCid ? (
+                        <a href={LighthouseService.audioUrl(item.audioCid)} target="_blank" className="flex w-full items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 hover:bg-emerald-500/10 transition-colors group/btn no-underline">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-black shadow-lg shadow-emerald-500/10 group-hover/btn:scale-105 transition-transform"><Headphones className="h-4 w-4" /></div>
+                          <div className="flex-1 text-left"><p className="text-sm font-bold text-white m-0">Escuchar</p><p className="font-mono text-[9px] text-zinc-500 m-0">Open IPFS</p></div>
+                          <ExternalLink className="h-3.5 w-3.5 text-zinc-600 group-hover/btn:text-emerald-500" />
                         </a>
-                      </div>
-                    </Card>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-          )}
-        </>
+                      ) : (
+                        <div className="text-center py-4 border border-zinc-800 rounded-2xl opacity-40">
+                          <p className="font-mono text-[9px] uppercase tracking-widest">Sin Audio Registrado</p>
+                        </div>
+                      )
+                    )}
+                    <a href={`https://sepolia.arbiscan.io/tx/${item.txHash}`} target="_blank" className="flex items-center justify-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-700 hover:text-emerald-500 transition-colors no-underline">
+                      Blockchain Proof <ExternalLink className="h-2 w-2" />
+                    </a>
+                  </div>
+                </Card>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
       )}
     </div>
   );
