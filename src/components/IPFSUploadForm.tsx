@@ -3,10 +3,10 @@
  *
  * Si hay match de MB → autocompletar título/artista y bloquear inputs
  * Si no → inputs editables normalmente
- * El releaseId ya viene en catalogReport desde el análisis
+ * CORRECCIÓN: Sincronización de estado para desbloqueo inmediato del botón al hacer match.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWallet } from "@/hooks/useWallet";
 import { LighthouseService } from "@/services/LighthouseService";
 import { RegisterWorkButton } from "@/components/RegisterWorkButton";
@@ -46,9 +46,9 @@ export function IPFSUploadForm({
   const hasMBMatch = !!mbMatch && mbMatch.scorePercent >= 45;
   const isHighRisk = authenticityScore >= 2;
 
-  // Si hay match de MB, precargar título/artista y bloquear inputs
-  const [title, setTitle] = useState(hasMBMatch ? (mbMatch?.title ?? "") : "");
-  const [artist, setArtist] = useState(hasMBMatch ? (mbMatch?.artist ?? "") : "");
+  // Estados locales
+  const [title, setTitle] = useState("");
+  const [artist, setArtist] = useState("");
   const [encrypt, setEncrypt] = useState(true);
   const [isSoulbound, setIsSoulbound] = useState(false);
 
@@ -58,11 +58,22 @@ export function IPFSUploadForm({
   const [audioCid, setAudioCid] = useState("");
   const [metadataCid, setMetadataCid] = useState("");
 
+  // ✨ EFECTO DE SINCRONIZACIÓN: Desbloquea el botón cuando llega el reporte
+  useEffect(() => {
+    if (hasMBMatch && mbMatch) {
+      setTitle(mbMatch.title ?? "");
+      setArtist(mbMatch.artist ?? "");
+    }
+  }, [hasMBMatch, mbMatch]);
+
   const isUploading = stage === "uploading-audio" || stage === "uploading-metadata";
   const isDone = stage === "done";
 
+  // Validación robusta para el botón
+  const isMetadataIncomplete = !title.trim() || !artist.trim();
+
   const handleSubmit = async () => {
-    if (!title.trim() || !artist.trim()) {
+    if (isMetadataIncomplete) {
       setError("Por favor completa el título y el artista");
       return;
     }
@@ -87,7 +98,6 @@ export function IPFSUploadForm({
       setStage("uploading-metadata");
       setStageMsg("Subiendo metadata a IPFS...");
 
-      // ✨ releaseId YA VIENE en mbMatch desde catalogReport (obtenido en el análisis)
       const mbInfo = hasMBMatch && mbMatch
         ? {
             recordingId: mbMatch.recordingId,
@@ -98,13 +108,6 @@ export function IPFSUploadForm({
             releaseTitle: mbMatch.releaseTitle,
           }
         : undefined;
-
-      if (mbInfo) {
-        console.log("🎵 MB Info guardada:", { 
-          ...mbInfo, 
-          releaseId: mbInfo.releaseId ? mbInfo.releaseId.slice(0, 8) + "..." : null 
-        });
-      }
 
       const mCid = await lh.uploadMetadata(
         title.trim(),
@@ -142,9 +145,12 @@ export function IPFSUploadForm({
     setAudioCid("");
     setMetadataCid("");
     setError(null);
+    if (!hasMBMatch) {
+      setTitle("");
+      setArtist("");
+    }
   };
 
-  // ── Post-upload ───────────────────────────────────────────────────────────
   if (isDone && metadataCid) {
     return (
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
@@ -196,7 +202,6 @@ export function IPFSUploadForm({
     );
   }
 
-  // ── Formulario ────────────────────────────────────────────────────────────
   return (
     <Card className="space-y-6">
       <div className="border-b border-surface-border pb-4">
@@ -204,7 +209,6 @@ export function IPFSUploadForm({
         <p className="mt-1 font-mono text-[10px] text-zinc-500">Almacenamiento en Lighthouse (IPFS)</p>
       </div>
 
-      {/* Badge MB match */}
       {hasMBMatch && mbMatch && (
         <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">
           <div className="flex items-center gap-2">
@@ -218,11 +222,6 @@ export function IPFSUploadForm({
             {mbMatch.releaseTitle && <span className="text-zinc-500"> · {mbMatch.releaseTitle}</span>}
           </p>
           <p className="mt-1 font-mono text-[10px] text-blue-400/60">Score: {mbMatch.scorePercent}%</p>
-          {mbMatch.releaseId && (
-            <p className="mt-1 font-mono text-[9px] text-blue-400/40">
-              🎵 Portada disponible
-            </p>
-          )}
           {mbMatch.recordingId && (
             <a
               href={`https://musicbrainz.org/recording/${mbMatch.recordingId}`}
@@ -236,7 +235,6 @@ export function IPFSUploadForm({
         </div>
       )}
 
-      {/* Campos título/artista — bloqueados si hay match MB */}
       <div className="space-y-4">
         <div>
           <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-zinc-400">
@@ -251,11 +249,6 @@ export function IPFSUploadForm({
             readOnly={hasMBMatch}
             className={hasMBMatch ? "border-blue-500/30 bg-blue-500/5 cursor-not-allowed opacity-80" : ""}
           />
-          {hasMBMatch && (
-            <p className="mt-1 font-mono text-[9px] text-blue-400/60">
-              🔒 Título verificado de MusicBrainz — no editable
-            </p>
-          )}
         </div>
 
         <div>
@@ -274,7 +267,6 @@ export function IPFSUploadForm({
         </div>
       </div>
 
-      {/* Toggles */}
       <div className="grid grid-cols-2 gap-3">
         <button
           type="button"
@@ -315,7 +307,6 @@ export function IPFSUploadForm({
         </button>
       </div>
 
-      {/* Progreso */}
       <AnimatePresence>
         {isUploading && (
           <motion.div
@@ -345,7 +336,7 @@ export function IPFSUploadForm({
 
       <Button
         onClick={handleSubmit}
-        disabled={!title.trim() || !artist.trim() || isUploading}
+        disabled={isMetadataIncomplete || isUploading}
         className="w-full h-12"
         size="lg"
       >
@@ -356,7 +347,7 @@ export function IPFSUploadForm({
         )}
       </Button>
 
-      {!isUploading && (!title.trim() || !artist.trim()) && (
+      {!isUploading && isMetadataIncomplete && (
         <p className="text-center font-mono text-[9px] text-zinc-500">
           Completa título y artista para continuar
         </p>
