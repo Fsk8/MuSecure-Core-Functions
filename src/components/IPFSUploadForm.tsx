@@ -77,6 +77,11 @@ export function IPFSUploadForm({
       setError("Por favor completa el título y el artista");
       return;
     }
+    // Guard: signMessage no está listo si el iframe de Privy aún no cargó
+    if (encrypt && !signMessage) {
+      setError("La wallet aún no está lista. Espera unos segundos e intenta de nuevo.");
+      return;
+    }
     setError(null);
     const lh = LighthouseService.getInstance();
 
@@ -336,12 +341,14 @@ export function IPFSUploadForm({
 
       <Button
         onClick={handleSubmit}
-        disabled={isMetadataIncomplete || isUploading}
+        disabled={isMetadataIncomplete || isUploading || (encrypt && !signMessage)}
         className="w-full h-12"
         size="lg"
       >
         {isUploading ? (
           <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{stageMsg}</>
+        ) : encrypt && !signMessage ? (
+          <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Conectando wallet...</>
         ) : (
           <><Upload className="mr-2 h-4 w-4" />Subir a IPFS</>
         )}

@@ -29,17 +29,26 @@ export interface WalletState {
  * Resuelve el race condition en Vercel donde la embedded wallet
  * no está lista inmediatamente tras el login.
  */
-async function getProviderWithRetry(wallet: any, retries = 5, delay = 600): Promise<any> {
-  for (let i = 0; i < retries; i++) {
+async function getProviderWithRetry(wallet: any): Promise<any> {
+  // Backoff exponencial — el iframe de Privy tarda más en Vercel que en local
+  const delays = [300, 600, 900, 1200, 1500, 2000, 2500, 3000];
+  let lastError: unknown;
+  for (let i = 0; i < delays.length; i++) {
     try {
       const provider = await wallet.getEthereumProvider();
       if (provider && typeof provider.request === "function") return provider;
     } catch (e) {
-      if (i === retries - 1) throw e;
+      lastError = e;
     }
-    await new Promise((r) => setTimeout(r, delay));
+    if (i < delays.length - 1) {
+      await new Promise((r) => setTimeout(r, delays[i]));
+    }
   }
-  throw new Error("No se pudo obtener el provider después de varios intentos.");
+  throw new Error(
+    "No se pudo conectar con la wallet después de varios intentos. " +
+    "Intenta refrescar la página. " +
+    `(${(lastError as Error)?.message ?? "timeout"})`
+  );
 }
 
 export function useWallet(): WalletState {
