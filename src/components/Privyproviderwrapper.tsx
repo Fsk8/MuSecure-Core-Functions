@@ -9,9 +9,13 @@ export function PrivyProviderWrapper({ children }: Props) {
   const appId = import.meta.env.VITE_PRIVY_APP_ID as string;
   if (!appId) throw new Error("Falta VITE_PRIVY_APP_ID en .env");
 
+  const clientId = import.meta.env.VITE_PRIVY_CLIENT_ID as string;
+  if (!appId) throw new Error("Falta VITE_PRIVY_CLIENT_ID en .env");
+
   return (
     <PrivyProvider
       appId={appId}
+      clientId={clientId}
       config={{
         loginMethods: ["email", "wallet", "google"],
 
