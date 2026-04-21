@@ -8,9 +8,9 @@
  *
  * Por qué BrowserProvider funciona y useSendTransaction no:
  * - useSendTransaction() de Privy usa un path interno que no soporta
- *   eth_signTransaction estándar en embedded wallets.
- * - BrowserProvider + signer.sendTransaction() usa eth_sendTransaction
- *   que SÍ está soportado en todos los tipos de wallet de Privy.
+ * eth_signTransaction estándar en embedded wallets.
+ * - BrowserProvider + send("eth_sendTransaction") usa el estándar directo
+ * que SÍ está soportado en todos los tipos de wallet de Privy.
  */
 
 import { useState, useCallback } from "react";
@@ -107,14 +107,13 @@ export function useRegisterWork() {
       const sigData = await sigRes.json();
       if (!sigData.success) throw new Error(sigData.error ?? "Falla en firma del backend");
 
-      // ── 3. Obtener signer de Privy ────────────────────────────────────────
+      // ── 3. Obtener provider de Privy ────────────────────────────────────────
       // IMPORTANTE: Separamos lectura de firma para evitar el error NETWORK_ERROR.
       // El provider de Privy usa rpc.privy.systems que puede estar bloqueado por CSP.
       // Solución: usamos rpcProvider (público) para getNetwork/getFeeData,
-      // y el provider de Privy SOLO para obtener el signer y firmar la tx.
+      // y el provider de Privy SOLO para enviar la tx bruta.
       set("waiting-wallet");
       const privyProvider = await getProvider();
-      const signer = await privyProvider.getSigner();
 
       // getNetwork y getFeeData desde el RPC público — no pasa por rpc.privy.systems
       const network = await rpcProvider.getNetwork();
@@ -138,13 +137,15 @@ export function useRegisterWork() {
         sigData.signature,
       ]);
 
+      // MEJORA: Usamos ethers.toBeHex() para garantizar que los valores hex 
+      // sean estrictamente válidos para el protocolo RPC.
       const txHash: string = await privyProvider.send("eth_sendTransaction", [{
         from: address,
         to: registryAddress,
         data: calldata,
-        gas: "0x" + (600000).toString(16),
-        maxFeePerGas: "0x" + maxFeePerGas.toString(16),
-        maxPriorityFeePerGas: "0x" + maxPriorityFeePerGas.toString(16),
+        gas: ethers.toBeHex(600000),
+        maxFeePerGas: ethers.toBeHex(maxFeePerGas),
+        maxPriorityFeePerGas: ethers.toBeHex(maxPriorityFeePerGas),
       }]);
 
       if (!txHash) throw new Error("No se recibió hash de transacción.");
