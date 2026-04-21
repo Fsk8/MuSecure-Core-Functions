@@ -1,9 +1,16 @@
 /**
  * MuSecure – hooks/useRegisterWork.ts
- * * SOLUCIÓN DEFINITIVA:
- * 1. Alchemy RPC: Maneja lecturas y esperas para evitar el Rate Limit de MetaMask.
- * 2. Gas Manual: Obtenemos maxFee y priorityFee de Alchemy.
- * 3. Fix Envelope: Formato hexadecimal estricto para evitar error "0x02".
+ *
+ * Estrategia definitiva para embedded wallets + MetaMask en Privy:
+ * - NO usar useSendTransaction() → causa "Recovery method not supported"
+ * - NO usar window.ethereum → rompe con embedded wallets
+ * - SÍ usar getProvider() de useWallet() → BrowserProvider(eip1193) de ethers v6
+ *
+ * Por qué BrowserProvider funciona y useSendTransaction no:
+ * - useSendTransaction() de Privy usa un path interno que no soporta
+ *   eth_signTransaction estándar en embedded wallets.
+ * - BrowserProvider + signer.sendTransaction() usa eth_sendTransaction
+ *   que SÍ está soportado en todos los tipos de wallet de Privy.
  */
 
 import { useState, useCallback } from "react";
@@ -27,6 +34,11 @@ export interface RegisterState {
   error?: string;
 }
 
+export interface RegisterResult {
+  txHash: string;
+  tokenId: number;
+}
+
 const REGISTRY_ABI = [
   "function workExists(bytes32 fingerprintHash) view returns (bool)",
   "function registerWork(bytes32 fingerprintHash, string ipfsCid, uint256 authenticityScore, bool soulbound, bytes scoreSig) payable returns (uint256)",
@@ -34,18 +46,18 @@ const REGISTRY_ABI = [
 ];
 
 const STEP_MESSAGES: Record<RegisterStep, string> = {
-  "idle": "",
-  "checking-duplicate": "Verificando registro previo en blockchain...",
-  "requesting-signature": "Generando firma de autenticidad (Backend)...",
-  "waiting-wallet": "Confirma la transacción en tu wallet...",
-  "confirming": "Procesando registro en Arbitrum Sepolia...",
-  "done": "¡Obra protegida exitosamente!",
-  "error": "Error en el registro",
+  "idle":                 "",
+  "checking-duplicate":   "Verificando registro previo...",
+  "requesting-signature": "Solicitando firma al backend...",
+  "waiting-wallet":       "Confirma en tu wallet...",
+  "confirming":           "Confirmando en Arbitrum Sepolia...",
+  "done":                 "¡Registro exitoso!",
+  "error":                "Error en el proceso",
 };
 
 export function useRegisterWork() {
   const [state, setState] = useState<RegisterState>({ step: "idle", message: "" });
-  const { getProvider, address } = useWallet();
+  const { getProvider, address, isReady } = useWallet();
 
   const set = (step: RegisterStep, extra?: Partial<RegisterState>) =>
     setState(prev => ({ ...prev, step, message: STEP_MESSAGES[step], ...extra }));
@@ -55,32 +67,27 @@ export function useRegisterWork() {
     ipfsCid: string;
     authenticityScore: number;
     soulbound: boolean;
-  }) => {
+  }): Promise<RegisterResult> => {
+    const registryAddress = import.meta.env.VITE_REGISTRY_ADDRESS as string;
+    const backendUrl = (import.meta.env.VITE_BACKEND_URL as string) ?? "";
+    const rpcUrl = (import.meta.env.VITE_ARBITRUM_RPC as string) ?? "https://sepolia-rollup.arbitrum.io/rpc";
+
     try {
-      const registryAddress = import.meta.env.VITE_REGISTRY_ADDRESS;
-      const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      const alchemyRpc = import.meta.env.VITE_RPC_URL; 
+      if (!registryAddress) throw new Error("Falta VITE_REGISTRY_ADDRESS en .env");
+      if (!isReady || !getProvider) throw new Error("Wallet no disponible. Reconecta tu cuenta.");
 
-      if (!getProvider || !address) throw new Error("Wallet no conectada");
-      if (!alchemyRpc) throw new Error("Falta VITE_RPC_URL en el archivo .env");
-
-      // 1. Configuración de Providers
-      const walletProvider = await getProvider();
-      const alchemyProvider = new ethers.JsonRpcProvider(alchemyRpc);
-      
-      const signer = await walletProvider.getSigner();
-      const realAddress = await signer.getAddress();
-      
       let cleanHash = input.fingerprintHash;
       if (!cleanHash.startsWith("0x")) cleanHash = "0x" + cleanHash;
 
-      // 2. Verificación de duplicados vía Alchemy
+      // ── 1. Verificar duplicado (read-only, RPC público) ───────────────────
+      // Usamos JsonRpcProvider para la lectura — más rápido y sin permisos de wallet
       set("checking-duplicate");
-      const readRegistry = new ethers.Contract(registryAddress, REGISTRY_ABI, alchemyProvider);
-      const exists = await readRegistry.workExists(cleanHash);
-      if (exists) throw new Error("Esta obra ya se encuentra registrada en el sistema.");
+      const rpcProvider = new ethers.JsonRpcProvider(rpcUrl);
+      const registryRead = new ethers.Contract(registryAddress, REGISTRY_ABI, rpcProvider);
+      const exists = await registryRead.workExists(cleanHash);
+      if (exists) throw new Error("Esta huella ya está registrada en MuSecure.");
 
-      // 3. Obtención de firma del Backend
+      // ── 2. Firma del backend ──────────────────────────────────────────────
       set("requesting-signature");
       const sigRes = await fetch(`${backendUrl}/api/sign-music`, {
         method: "POST",
@@ -88,90 +95,99 @@ export function useRegisterWork() {
         body: JSON.stringify({
           fingerprintHash: cleanHash,
           score: input.authenticityScore,
-          userAddress: realAddress,
-          chainId: 421614 // Arbitrum Sepolia
+          userAddress: address,
+          chainId: 421614,
         }),
       });
 
+      if (!sigRes.ok) {
+        const txt = await sigRes.text().catch(() => sigRes.statusText);
+        throw new Error(`Backend ${sigRes.status}: ${txt}`);
+      }
       const sigData = await sigRes.json();
-      if (!sigData.success) throw new Error(sigData.error || "Error al obtener la firma del servidor");
+      if (!sigData.success) throw new Error(sigData.error ?? "Falla en firma del backend");
 
-      // 4. Preparación de Gas y Transacción
+      // ── 3. Obtener signer de Privy ────────────────────────────────────────
+      // IMPORTANTE: Separamos lectura de firma para evitar el error NETWORK_ERROR.
+      // El provider de Privy usa rpc.privy.systems que puede estar bloqueado por CSP.
+      // Solución: usamos rpcProvider (público) para getNetwork/getFeeData,
+      // y el provider de Privy SOLO para obtener el signer y firmar la tx.
       set("waiting-wallet");
+      const privyProvider = await getProvider();
+      const signer = await privyProvider.getSigner();
 
-      // Obtenemos los precios actuales del gas desde Alchemy (Bypass Rate Limit de MM)
-      const feeData = await alchemyProvider.getFeeData();
+      // getNetwork y getFeeData desde el RPC público — no pasa por rpc.privy.systems
+      const network = await rpcProvider.getNetwork();
+      if (network.chainId.toString() !== "421614") {
+        throw new Error("Cambia tu wallet a Arbitrum Sepolia (chainId: 421614).");
+      }
 
-      // Formateamos fees asegurando que no sean null
-      const maxFee = feeData.maxFeePerGas 
-        ? ethers.toBeHex(feeData.maxFeePerGas) 
-        : ethers.toBeHex(ethers.parseUnits("0.1", "gwei"));
+      const feeData = await rpcProvider.getFeeData();
+      const maxFeePerGas = (feeData.maxFeePerGas! * 130n) / 100n;
+      const maxPriorityFeePerGas = (feeData.maxPriorityFeePerGas! * 130n) / 100n;
 
-      const priorityFee = feeData.maxPriorityFeePerGas 
-        ? ethers.toBeHex(feeData.maxPriorityFeePerGas) 
-        : ethers.toBeHex(ethers.parseUnits("0.01", "gwei"));
-
-      // Encodear la función del contrato
-      const txData = readRegistry.interface.encodeFunctionData("registerWork", [
+      // ── 4. Encodear calldata y enviar via eth_sendTransaction directo ─────
+      // provider.send("eth_sendTransaction") bypasea el handleSendTransaction
+      // de Privy donde vive el bug "Recovery method not supported".
+      const iface = new ethers.Interface(REGISTRY_ABI);
+      const calldata = iface.encodeFunctionData("registerWork", [
         cleanHash,
         input.ipfsCid,
         BigInt(input.authenticityScore),
         input.soulbound,
-        sigData.signature
+        sigData.signature,
       ]);
 
-      const txParams = {
-        from: realAddress,
+      const txHash: string = await privyProvider.send("eth_sendTransaction", [{
+        from: address,
         to: registryAddress,
-        data: txData,
-        gas: ethers.toBeHex(500000), // Gas suficiente para el minting
-        maxFeePerGas: maxFee,
-        maxPriorityFeePerGas: priorityFee,
-        type: "0x2" // EIP-1559 estricto
-      };
+        data: calldata,
+        gas: "0x" + (600000).toString(16),
+        maxFeePerGas: "0x" + maxFeePerGas.toString(16),
+        maxPriorityFeePerGas: "0x" + maxPriorityFeePerGas.toString(16),
+      }]);
 
-      // 5. Envío directo a la Wallet
-      const txHash = await walletProvider.send("eth_sendTransaction", [txParams]);
+      if (!txHash) throw new Error("No se recibió hash de transacción.");
 
+      // ── 5. Esperar confirmación via RPC público ───────────────────────────
       set("confirming", { txHash });
+      const receipt = await rpcProvider.waitForTransaction(txHash, 1, 120_000);
+      if (!receipt) throw new Error("La transacción no se confirmó en 2 minutos.");
+      if (receipt.status === 0) throw new Error("La transacción fue revertida por el contrato.");
 
-      // 6. Esperar confirmación vía Alchemy
-      const receipt = await alchemyProvider.waitForTransaction(txHash, 1, 120_000);
-      
-      if (!receipt || receipt.status === 0) throw new Error("La transacción falló en la blockchain.");
-
-      // 7. Parse de Logs para obtener el TokenID
       let tokenId = 0;
-      const iface = new ethers.Interface(REGISTRY_ABI);
-      receipt.logs.forEach(log => {
+      for (const log of receipt.logs ?? []) {
         try {
-          const p = iface.parseLog({ topics: [...log.topics], data: log.data });
-          if (p?.name === "WorkRegistered") tokenId = Number(p.args.tokenId);
-        } catch (e) {
-          // Log no relacionado con este evento
-        }
-      });
-
-      set("done", { txHash, tokenId });
-      return { txHash, tokenId };
-
-    } catch (err: any) {
-      console.error("[RegisterWork Error]", err);
-      
-      let errorMessage = err.message || "Error inesperado";
-      
-      if (errorMessage.includes("rate limited")) {
-        errorMessage = "Nodo saturado. Por favor, espera 10 segundos e intenta de nuevo.";
-      } else if (errorMessage.includes("user rejected")) {
-        errorMessage = "Registro cancelado en la wallet.";
+          const parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
+          if (parsed?.name === "WorkRegistered") {
+            tokenId = Number(parsed.args.tokenId);
+          }
+        } catch {}
       }
 
-      set("error", { error: errorMessage });
-      throw err;
+      const result = { txHash, tokenId };
+      set("done", result);
+      return result;
+
+    } catch (err: any) {
+      console.error("[RegisterWork] Error:", err);
+      let msg = err.reason ?? err.error?.message ?? err.message ?? "Error desconocido";
+
+      // Mensajes amigables para errores comunes
+      if (msg.toLowerCase().includes("user rejected") || msg.includes("4001")) {
+        msg = "Transacción cancelada por el usuario.";
+      } else if (msg.toLowerCase().includes("insufficient funds")) {
+        msg = "Fondos insuficientes para el gas. Pide ETH de prueba abajo.";
+      } else if (msg.includes("recovery") || msg.includes("Recovery")) {
+        // Si aparece este error, es un bug de compatibilidad de Privy
+        msg = "Error de wallet. Intenta cerrar sesión y volver a conectar.";
+      }
+
+      set("error", { error: msg });
+      throw new Error(msg);
     }
-  }, [getProvider, address]);
+  }, [getProvider, address, isReady]);
 
   const reset = useCallback(() => setState({ step: "idle", message: "" }), []);
-
   return { registerWork, state, reset };
 }
