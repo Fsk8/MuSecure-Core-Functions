@@ -35,16 +35,23 @@ Registration & Faucet: The work is registered on Arbitrum. If the user has no fu
 Create a .env file with the following variables:
 
 VITE_PRIVY_APP_ID=        # Privy App ID
+
 VITE_PRIVY_CLIENT_ID=     # Privy Client ID
+
 VITE_LIGHTHOUSE_API_KEY=  # Lighthouse IPFS Key
+
 VITE_ACOUSTID_CLIENT_KEY= # AcoustID/MusicBrainz Key
+
 VITE_REGISTRY_ADDRESS=    # Smart Contract Address
+
 VITE_RPC_URL=             # Node RPC
+
 VITE_BACKEND_URL=         # Validation Server URL
 
-# Sensitive Keys (Server-side)
+Sensitive Keys (Server-side):
 
 SCORE_SIGNER_PRIVATE_KEY= # Oracle signing key
+
 TREASURY_PRIVATE_KEY=    # Faucet wallet key
 
 🚀 Installation
@@ -87,15 +94,23 @@ Registro & Faucet: La obra se registra en Arbitrum. Si el usuario no tiene fondo
 Crea un archivo .env con las siguientes variables:
 
 VITE_PRIVY_APP_ID=        # ID de aplicación de Privy
+
 VITE_PRIVY_CLIENT_ID=     # Client ID de Privy
+
 VITE_LIGHTHOUSE_API_KEY=  # API Key de Lighthouse
+
 VITE_ACOUSTID_CLIENT_KEY= # Key de AcoustID/MusicBrainz
+
 VITE_REGISTRY_ADDRESS=    # Dirección del Smart Contract
+
 VITE_RPC_URL=             # URL del nodo RPC
+
 VITE_BACKEND_URL=         # URL del servidor de validación
 
-# Llaves Sensibles (Lado del servidor)
+Llaves Sensibles (Lado del servidor):
+
 SCORE_SIGNER_PRIVATE_KEY= # Llave para firma de oráculo
+
 TREASURY_PRIVATE_KEY=    # Llave de la Faucet (gas para usuarios)
 
 🚀 Instalación
