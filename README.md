@@ -1,7 +1,9 @@
 🎵 MuSecure-Core: Decentralized Music IP Protection
+
 Note: Scroll down for the Spanish version / Desliza hacia abajo para la versión en español.
 
 🇺🇸 English Version
+
 MuSecure is a decentralized platform designed to grant sovereignty and integrity to musical intellectual property. By utilizing Acoustic Fingerprinting, local WASM processing, and the Arbitrum network, MuSecure creates an immutable and verifiable record of authorship.
 
 🛠️ Tech Stack
@@ -51,6 +53,7 @@ npm install
 npm run dev
 
 🇪🇸 Versión en Español
+
 MuSecure es una plataforma descentralizada diseñada para otorgar soberanía e integridad a la propiedad intelectual musical. Mediante el uso de Huellas Acústicas (Fingerprinting), procesamiento local en WASM y la red de Arbitrum, MuSecure crea un registro inmutable y verificable de la autoría de una obra.
 
 🛠️ Stack Tecnológico
