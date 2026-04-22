@@ -121,28 +121,65 @@ export function Dashboard() {
       setWorks(items.sort((a, b) => b.timestamp - a.timestamp));
 
       items.forEach((item) => {
-        fetch(LighthouseService.gatewayUrl(item.metadataCid))
-          .then((r) => r.json())
-          .then((meta: MuSecureMetadata & { name?: string; attributes?: any[] }) => {
-            const audioCid = (meta.encryptedAudio?.ciphertextCid ?? (meta as any).animation_url ?? "").replace("ipfs://", "");
-            const isEncrypted = !!(meta.encryptedAudio?.encrypted || meta.attributes?.some(a => a.value === "Cifrado" || a.value === true));
+        // Intentar primero con el gateway del servicio, luego fallback directo a Lighthouse
+        // Esto resuelve el problema en Vercel donde el proxy (/api/ipfs) puede dar 402/redirect
+        const urls = [
+          LighthouseService.gatewayUrl(item.metadataCid),
+          `https://gateway.lighthouse.storage/ipfs/${item.metadataCid}`,
+        ];
 
-            // Búsqueda robusta de Artista en los atributos si no viene en la raíz
-            const attrArtist = meta.attributes?.find(a => a.trait_type === "Artista")?.value;
-            const finalArtist = meta.artist || attrArtist || "Unknown Artist";
-            const finalTitle = meta.title || meta.name || item.title;
+        const fetchMeta = async () => {
+          for (const url of urls) {
+            try {
+              const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+              // Verificar que la respuesta es válida antes de parsear
+              if (!r.ok) continue;
+              const contentType = r.headers.get("content-type") ?? "";
+              // Evitar parsear HTML de páginas de error como JSON
+              if (!contentType.includes("json") && !contentType.includes("octet")) continue;
+              const meta: MuSecureMetadata & { name?: string; attributes?: any[] } = await r.json();
+              return meta;
+            } catch {
+              continue;
+            }
+          }
+          return null;
+        };
 
-            setWorks((prev) => prev.map((w) =>
-              w.tokenId === item.tokenId
-                ? { ...w, audioCid, isEncrypted, title: finalTitle, artist: finalArtist, metaLoading: false }
-                : w
-            ));
-          })
-          .catch(() => {
+        fetchMeta().then((meta) => {
+          if (!meta) {
             setWorks((prev) => prev.map((w) =>
               w.tokenId === item.tokenId ? { ...w, metaLoading: false } : w
             ));
-          });
+            return;
+          }
+
+          // Soporte dual: formato MuSecure (encryptedAudio) + ERC-721 (animation_url)
+          const animUrl: string = (meta as any).animation_url ?? "";
+          const audioCid =
+            meta.encryptedAudio?.ciphertextCid
+            ?? (animUrl ? animUrl.replace("ipfs://", "").trim() : "");
+
+          const protAttr = meta.attributes?.find(
+            (a: any) => a.trait_type === "Protección" || a.trait_type === "Encrypted"
+          );
+          const isEncrypted =
+            meta.encryptedAudio?.encrypted === true
+            || protAttr?.value === "Cifrado"
+            || protAttr?.value === true;
+
+          const attrArtist = meta.attributes?.find(
+            (a: any) => a.trait_type === "Artista" || a.trait_type === "Artist"
+          )?.value;
+          const finalArtist = meta.artist || attrArtist || "Unknown Artist";
+          const finalTitle = meta.title || (meta as any).name || item.title;
+
+          setWorks((prev) => prev.map((w) =>
+            w.tokenId === item.tokenId
+              ? { ...w, audioCid, isEncrypted, title: finalTitle, artist: String(finalArtist), metaLoading: false }
+              : w
+          ));
+        });
       });
     } catch (e) {
       setError("Error al procesar registros.");
