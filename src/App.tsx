@@ -154,13 +154,9 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <Tabs defaultValue="explorer" className="mx-auto max-w-6xl px-6 pt-8">
+      <Tabs defaultValue="upload" className="mx-auto max-w-6xl px-6 pt-8">
         <div className="flex justify-center">
           <TabsList>
-            <TabsTrigger value="explorer" className="gap-2">
-              <LayoutGrid className="h-3.5 w-3.5" />
-              Explorar
-            </TabsTrigger>
             <TabsTrigger value="upload" className="gap-2">
               <Upload className="h-3.5 w-3.5" />
               Subir Obra
@@ -168,6 +164,10 @@ export default function App() {
             <TabsTrigger value="dashboard" className="gap-2">
               <Shield className="h-3.5 w-3.5" />
               Mis Obras
+            </TabsTrigger>
+            <TabsTrigger value="explorer" className="gap-2">
+              <LayoutGrid className="h-3.5 w-3.5" />
+              Explorar
             </TabsTrigger>
           </TabsList>
         </div>
