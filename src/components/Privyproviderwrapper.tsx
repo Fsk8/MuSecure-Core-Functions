@@ -10,7 +10,10 @@ export function PrivyProviderWrapper({ children }: Props) {
   if (!appId) throw new Error("Falta VITE_PRIVY_APP_ID en .env");
 
   const clientId = import.meta.env.VITE_PRIVY_CLIENT_ID as string;
-  if (!appId) throw new Error("Falta VITE_PRIVY_CLIENT_ID en .env");
+  if (!clientId) throw new Error("Falta VITE_PRIVY_CLIENT_ID en .env");
+
+  const walletConnectProjectId =
+    (import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined)?.trim() || undefined;
 
   return (
     <PrivyProvider
@@ -22,7 +25,18 @@ export function PrivyProviderWrapper({ children }: Props) {
         appearance: {
           theme: "dark",
           accentColor: "#10b981",
+          /** WalletConnect primero mejora conexión en móvil (MetaMask / Rainbow, etc.). */
+          walletList: [
+            "wallet_connect",
+            "coinbase_wallet",
+            "metamask",
+            "detected_ethereum_wallets",
+          ],
         },
+
+        ...(walletConnectProjectId
+          ? { walletConnectCloudProjectId: walletConnectProjectId }
+          : {}),
 
         embeddedWallets: {
           createOnLogin: "users-without-wallets",

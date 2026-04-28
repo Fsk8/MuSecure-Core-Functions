@@ -58,13 +58,13 @@ export function Dashboard() {
   const [works, setWorks] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [showOnlyMine, setShowOnlyMine] = useState(true);
 
   const fetchWorks = useCallback(async () => {
     if (showOnlyMine && !address) return;
     
-    setError(null);
+    setFetchError(null);
     setRefreshing(true);
 
     const RPC_ENDPOINTS = [
@@ -91,7 +91,7 @@ export function Dashboard() {
     }
 
     if (!success) {
-      setError("Error de red. Prueba sincronizar de nuevo.");
+      setFetchError("Error de red. Prueba sincronizar de nuevo.");
       setLoading(false);
       setRefreshing(false);
       return;
@@ -182,7 +182,7 @@ export function Dashboard() {
         });
       });
     } catch (e) {
-      setError("Error al procesar registros.");
+      setFetchError("Error al procesar registros.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -245,6 +245,12 @@ export function Dashboard() {
         </div>
       </div>
 
+      {fetchError && (
+        <p className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-2 font-mono text-xs text-amber-400">
+          {fetchError}
+        </p>
+      )}
+
       {loading && !refreshing ? (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-64 rounded-[2.5rem] bg-zinc-900/50" />)}
@@ -252,7 +258,7 @@ export function Dashboard() {
       ) : (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <AnimatePresence mode="popLayout">
-            {works.map((item, index) => (
+            {works.map((item) => (
               <motion.div 
                 key={item.tokenId} 
                 layout

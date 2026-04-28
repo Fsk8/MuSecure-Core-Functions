@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { motion } from "motion/react";
-import { Wallet } from "lucide-react";
 
 export function BalanceBadge({ address }: { address: string | null }) {
   const [balance, setBalance] = useState<string>("0.00");

@@ -29,9 +29,22 @@ export interface WalletState {
  * Resuelve el race condition en Vercel donde la embedded wallet
  * no está lista inmediatamente tras el login.
  */
+function providerRetryDelaysMs(): number[] {
+  if (typeof navigator === "undefined") {
+    return [300, 600, 900, 1200, 1500, 2000, 2500, 3000, 3500, 4000];
+  }
+  const ua = navigator.userAgent;
+  const mobile =
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  // Móvil + Safari: el iframe embedded y WalletConnect suelen hidratar más lento.
+  if (mobile) {
+    return [400, 800, 1200, 1800, 2400, 3200, 4000, 5000, 6000, 7000];
+  }
+  return [300, 600, 900, 1200, 1500, 2000, 2500, 3000, 3500, 4000];
+}
+
 async function getProviderWithRetry(wallet: any): Promise<any> {
-  // Backoff exponencial — el iframe de Privy tarda más en Vercel que en local
-  const delays = [300, 600, 900, 1200, 1500, 2000, 2500, 3000];
+  const delays = providerRetryDelaysMs();
   let lastError: unknown;
   for (let i = 0; i < delays.length; i++) {
     try {
@@ -65,6 +78,8 @@ export function useWallet(): WalletState {
   }, [wallets]);
 
   const address = activeWallet?.address ?? user?.wallet?.address ?? null;
+
+  /** Firma y RPC: requiere wallet conectada en Privy. La dirección puede mostrarse antes desde `user.wallet`. */
   const isReady = ready && authenticated && !!activeWallet && !!address;
 
   const getProvider = useMemo(() => {

@@ -12,10 +12,6 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   FileAudio,
   Search,
-  Lock,
-  Unlock,
-  Link2,
-  Unlink2,
   CheckCircle2,
   XCircle,
   ExternalLink,
@@ -169,6 +165,10 @@ export const FingerprintUploader = () => {
   if (catalogScore >= 80) authenticityScore = 2;
   else if (catalogScore >= 45) authenticityScore = 1;
   else authenticityScore = 0;
+
+  /** Huella sin match fuerte en catálogo → obra original; portada custom opcional. */
+  const optionalCoverArtEnabled =
+    !!catalogReport && authenticityScore === 0;
 
   // Obtener el mejor match
   const bestMatch = catalogReport?.matches?.[0];
@@ -429,6 +429,7 @@ export const FingerprintUploader = () => {
                     ownerAddress={address ?? ""}
                     authenticityScore={authenticityScore}
                     catalogReport={catalogReport || undefined}
+                    optionalCoverArtEnabled={optionalCoverArtEnabled}
                   />
                 </motion.div>
               </AnimatePresence>

@@ -12,6 +12,7 @@ import { Shield, Upload, LayoutGrid, Wallet, LogOut } from "lucide-react";
 
 // Importamos tu nuevo componente
 import { BalanceBadge } from "@/components/ui/balancebadge";
+import { useWallet } from "@/hooks/useWallet";
 
 function LoadingScreen() {
   return (
@@ -74,7 +75,7 @@ function EmptyState({
 
 export default function App() {
   const { ready, authenticated, user, login, logout } = usePrivy();
-  const address = user?.wallet?.address;
+  const { address } = useWallet();
   
   const { airdropMessage } = useGasAirdrop(
     address || null,

@@ -42,6 +42,10 @@ export interface NFTMetadata {
 
 const LS_KEY = "musecure:uploads";
 
+/** Imagen por defecto del certificado NFT (sin portada custom). */
+export const DEFAULT_NFT_METADATA_IMAGE =
+  "ipfs://bafybeibvbfxhsexhqy6mipbqk7qmlolhynxfhqq7c7h4yzb5pcl5u4ixe4";
+
 export class LighthouseService {
   private static instance: LighthouseService | null = null;
   private constructor() {}
@@ -153,7 +157,8 @@ export class LighthouseService {
     audioCid: string,
     isEncrypted: boolean,
     mimeType: string,
-    mbInfo?: { recordingId: string; title: string; artist: string; scorePercent: number; releaseTitle?: string; releaseId?: string | null; }
+    mbInfo?: { recordingId: string; title: string; artist: string; scorePercent: number; releaseTitle?: string; releaseId?: string | null; },
+    artworkCid?: string | null
   ): Promise<string> {
     try {
       const lh = await this.getLh();
@@ -163,7 +168,9 @@ export class LighthouseService {
       const attributes: Array<{ trait_type: string; value: string | boolean }> = [
         { trait_type: "Artista", value: artist },
         { trait_type: "Protección", value: isEncrypted ? "Cifrado" : "Público" },
-        { trait_type: "Tipo de Archivo", value: mimeType }
+        { trait_type: "Tipo de Archivo", value: mimeType },
+        /** Siempre presente: el explorador enlaza metadata ↔ audio aunque `animation_url` vaya vacío (cifrado). */
+        { trait_type: "AudioCID", value: audioCid },
       ];
       
       // Agregar MusicBrainz info si existe
@@ -174,10 +181,15 @@ export class LighthouseService {
         });
       }
 
+      const imageUri =
+        artworkCid && artworkCid.trim().length > 0
+          ? `ipfs://${artworkCid.trim()}`
+          : DEFAULT_NFT_METADATA_IMAGE;
+
       const nftMetadata: NFTMetadata = {
         name: title,
         description: `Certificado de Autenticidad MuSecure para la obra "${title}" de ${artist}.`,
-        image: "ipfs://bafybeibvbfxhsexhqy6mipbqk7qmlolhynxfhqq7c7h4yzb5pcl5u4ixe4",
+        image: imageUri,
         animation_url: isEncrypted ? "" : `ipfs://${audioCid}`,
         attributes,
       };
@@ -258,6 +270,25 @@ export class LighthouseService {
     }
   }
 
+  /** Lista todos los archivos subidos (pagina con `lastKey` = id del último archivo). */
+  async listAllUploads(): Promise<any[]> {
+    const lh = await this.getLh();
+    const apiKey = getApiKey();
+    const all: any[] = [];
+    let lastKey: string | null = null;
+    for (let page = 0; page < 50; page++) {
+      const res = await lh.getUploads(apiKey, lastKey as any);
+      const batch: any[] = (res as any)?.data?.fileList ?? [];
+      if (!batch.length) break;
+      all.push(...batch);
+      const last = batch[batch.length - 1];
+      const next = last?.id ?? last?.cid ?? null;
+      if (!next || next === lastKey) break;
+      lastKey = next;
+    }
+    return all;
+  }
+
   // ── URL Helpers ───────────────────────────────────────────────────────────
 
   /** URL del gateway para metadata JSON y uso interno */
@@ -269,6 +300,26 @@ export class LighthouseService {
     }
     // En desarrollo, usar el gateway directo (o el proxy de Vite si lo tienes)
     return `https://gateway.lighthouse.storage/ipfs/${cid}`;
+  }
+
+  /**
+   * Varias URLs para leer el mismo CID (Lighthouse a veces responde 500; gateways públicos suelen sirven).
+   */
+  static metadataFetchUrls(cid: string): string[] {
+    const c = cid.trim();
+    if (!c) return [];
+    const primary = LighthouseService.gatewayUrl(c);
+    const candidates = [
+      primary,
+      `https://ipfs.io/ipfs/${c}`,
+      `https://cloudflare-ipfs.com/ipfs/${c}`,
+      `https://dweb.link/ipfs/${c}`,
+    ];
+    const out: string[] = [];
+    for (const u of candidates) {
+      if (u && !out.includes(u)) out.push(u);
+    }
+    return out;
   }
 
   /**

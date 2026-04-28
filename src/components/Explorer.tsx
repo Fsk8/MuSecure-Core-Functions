@@ -14,8 +14,12 @@
  * - RATE LIMITING: Procesa en lotes para no saturar Lighthouse
  */
 
-import { useEffect, useState } from "react";
-import { LighthouseService } from "@/services/LighthouseService";
+import { useCallback, useEffect, useState } from "react";
+import {
+  LighthouseService,
+  DEFAULT_NFT_METADATA_IMAGE,
+  type LocalUploadRecord,
+} from "@/services/LighthouseService";
 import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallet } from "@/hooks/useWallet";
@@ -36,6 +40,20 @@ interface MBInfo {
   artist: string;
   scorePercent: number;
   releaseTitle?: string;
+}
+
+/**
+ * Gateways de fallback para audio — cuando Lighthouse da 404 para CIDs antiguos,
+ * cualquier gateway público de IPFS puede servir el mismo contenido por CID.
+ */
+function getAudioFallbackUrls(audioCid: string): string[] {
+  if (!audioCid) return [];
+  return [
+    LighthouseService.audioUrl(audioCid, "audio/mpeg"),          // Principal (Lighthouse via proxy)
+    `https://ipfs.io/ipfs/${audioCid}?filename=audio.mp3`,       // Protocol Labs
+    `https://cloudflare-ipfs.com/ipfs/${audioCid}`,              // Cloudflare  
+    `https://dweb.link/ipfs/${audioCid}?filename=audio.mp3`,     // dweb.link
+  ];
 }
 
 // ✨ Función que elige la URL correcta según el entorno
@@ -60,6 +78,55 @@ interface WorkCard {
   isVerified: boolean;
   mbInfo?: MBInfo;
   hasMetadata: boolean;
+  /** Portada custom desde metadata NFT (no la imagen por defecto). */
+  customCoverUrl?: string | null;
+  /** Orden de subida en Lighthouse (desempate al deduplicar). */
+  uploadedAt: number;
+}
+
+/** Enlaza metadata ↔ CID de audio (`animation_url` o atributo `AudioCID` si el audio va cifrado). */
+function extractLinkedAudioCid(json: any): string {
+  const anim = String(json?.animation_url ?? "").trim();
+  if (anim) {
+    const low = anim.toLowerCase();
+    if (low.startsWith("ipfs://")) {
+      const rest = anim.slice(7).trim();
+      const cid = rest.split(/[/?#]/)[0];
+      if (cid) return cid;
+    }
+    const first = anim.split(/[/?#]/)[0];
+    if (/^(bafy|bafk|baf|Qm)/i.test(first)) return first;
+  }
+
+  const attrs = Array.isArray(json?.attributes) ? json.attributes : [];
+  const keys = ["audiocid", "audio cid", "audio_cid"];
+  for (const a of attrs) {
+    const tt = String(a?.trait_type ?? "").trim().toLowerCase();
+    if (!keys.includes(tt)) continue;
+    const v = String(a?.value ?? "").trim();
+    if (!v) continue;
+    if (v.toLowerCase().startsWith("ipfs://")) {
+      return v.slice(7).split(/[/?#]/)[0];
+    }
+    return v.split(/[/?#]/)[0];
+  }
+
+  return "";
+}
+
+/**
+ * Clave de deduplicación: obras con nombre genérico `blob`/`text` o sin metadata
+ * NO pueden compartir clave `blob__—` o todas colapsan en una sola tarjeta.
+ */
+function workCardDedupeKey(card: WorkCard): string {
+  const fn = String(card.fileName || "").toLowerCase();
+  const titleLo = card.title.toLowerCase().trim();
+  const genericName = fn === "blob" || fn === "text";
+  const blobLikeTitle = titleLo === "blob" || titleLo === "text";
+  if (!card.hasMetadata || genericName || blobLikeTitle) {
+    return `cid:${card.audioCid}`;
+  }
+  return `${titleLo}__${card.artist.toLowerCase().trim()}`;
 }
 
 // ✨ Extensiones de audio válidas
@@ -81,45 +148,96 @@ const FAILED_CIDS = new Set<string>(); // CIDs que ya fallaron (404, 429, etc.)
 
 // ✨ Función para hacer fetch con caché y sin reintentar fallos
 async function fetchMetadataWithCache(cid: string, fileName: string): Promise<any | null> {
-  // Si ya falló antes, no reintentar (evita 429 repetidos)
   if (FAILED_CIDS.has(cid)) {
     console.log(`⏭️ Saltando ${fileName} (falló previamente)`);
     return null;
   }
-  
-  // Verificar caché
+
   const cached = metadataCache.get(cid);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     console.log(`📦 Usando caché para ${fileName}`);
     return cached.data;
   }
-  
-  try {
-    const url = LighthouseService.gatewayUrl(cid);
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      // Si es 429, marcar como fallido y no reintentar
+
+  const url = LighthouseService.gatewayUrl(cid);
+  const maxAttempts = 5;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const response = await fetch(url);
+
       if (response.status === 429) {
+        if (attempt < maxAttempts - 1) {
+          await new Promise((r) => setTimeout(r, 900 + attempt * 500));
+          continue;
+        }
         console.warn(`⚠️ Rate limited para ${fileName}, no se reintentará`);
         FAILED_CIDS.add(cid);
+        return null;
       }
-      throw new Error(`HTTP ${response.status}`);
+
+      if (response.status >= 500 && response.status <= 599) {
+        if (attempt < maxAttempts - 1) {
+          await new Promise((r) => setTimeout(r, 400 * (attempt + 1) * (attempt + 1)));
+          continue;
+        }
+        console.warn(`⚠️ Gateway 5xx persistente para ${fileName} (${response.status})`);
+        return null;
+      }
+
+      if (!response.ok) {
+        if (response.status === 404) FAILED_CIDS.add(cid);
+        return null;
+      }
+
+      const text = await response.text();
+      const trimmed = text.trim();
+      if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+        console.warn(
+          `⏭️ Saltando ${fileName}: no es JSON (suele ser audio binario listado como "blob")`
+        );
+        return null;
+      }
+
+      const json = JSON.parse(trimmed);
+      metadataCache.set(cid, { data: json, timestamp: Date.now() });
+      console.log(`✅ Metadata obtenida: ${fileName}`);
+      return json;
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        console.warn(`⏭️ JSON inválido para ${fileName}`);
+        return null;
+      }
+      if (attempt === maxAttempts - 1) {
+        console.warn(`❌ Metadata falló para ${fileName}:`, e);
+        return null;
+      }
+      await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
     }
-    
-    const json = await response.json();
-    
-    // Guardar en caché
-    metadataCache.set(cid, { data: json, timestamp: Date.now() });
-    console.log(`✅ Metadata obtenida: ${fileName}`);
-    return json;
-    
-  } catch (e) {
-    console.warn(`❌ Metadata falló para ${fileName}:`, e);
-    // Marcar como fallido para no reintentar
-    FAILED_CIDS.add(cid);
-    return null;
   }
+
+  return null;
+}
+
+/** Pool de concurrencia para acelerar carga de metadatos sin disparar 429 tan pronto. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) break;
+      out[i] = await mapper(items[i], i);
+    }
+  }
+  const workers = Math.min(Math.max(limit, 1), items.length);
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+  return out;
 }
 
 function CardSkeleton() {
@@ -139,20 +257,28 @@ function CardSkeleton() {
   );
 }
 
-// ✨ Componente de imagen con fallback inmediato
-function CoverImage({ releaseId, title, onFinalError }: { 
-  releaseId: string; 
+function CoverImage({
+  releaseId,
+  title,
+  audioCid,
+  onUnavailable,
+}: {
+  releaseId: string;
   title: string;
-  onFinalError: () => void;
+  audioCid: string;
+  onUnavailable: (cid: string) => void;
 }) {
   const coverUrl = getCoverArtUrl(releaseId);
   const [hasError, setHasError] = useState(false);
-  
-  if (!coverUrl || hasError) {
-    onFinalError();
-    return null;
-  }
-  
+
+  useEffect(() => {
+    if (!coverUrl || hasError) {
+      onUnavailable(audioCid);
+    }
+  }, [coverUrl, hasError, audioCid, onUnavailable]);
+
+  if (!coverUrl || hasError) return null;
+
   return (
     <div className="flex items-center justify-center p-4 bg-black/20">
       <img
@@ -162,12 +288,83 @@ function CoverImage({ releaseId, title, onFinalError }: {
         onError={() => {
           console.log(`❌ Imagen no disponible para: ${title}`);
           setHasError(true);
-          onFinalError();
         }}
         loading="lazy"
         crossOrigin="anonymous"
       />
     </div>
+  );
+}
+
+/**
+ * AudioLink — prueba múltiples gateways en orden.
+ * Si el principal (Lighthouse) da 404, abre el siguiente gateway disponible.
+ * Usa <a> normal para que el navegador abra en nueva pestaña.
+ */
+function AudioLink({
+  audioCid,
+  isVerified,
+}: {
+  audioCid: string;
+  isVerified: boolean;
+}) {
+  const [urlIndex, setUrlIndex] = useState(0);
+  const urls = getAudioFallbackUrls(audioCid);
+  const currentUrl = urls[urlIndex] ?? urls[0];
+
+  const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    // Intentar HEAD request para ver si el gateway responde
+    // Si falla, avanzar al siguiente sin bloquear al usuario
+    try {
+      const res = await fetch(currentUrl, { method: "HEAD", signal: AbortSignal.timeout(3000) });
+      if (!res.ok && urlIndex < urls.length - 1) {
+        e.preventDefault();
+        setUrlIndex(urlIndex + 1);
+        // Reintento automático
+        setTimeout(() => {
+          window.open(urls[urlIndex + 1], "_blank", "noreferrer");
+        }, 100);
+      }
+    } catch {
+      // Si HEAD falla, avanzar al siguiente
+      if (urlIndex < urls.length - 1) {
+        e.preventDefault();
+        const nextIdx = urlIndex + 1;
+        setUrlIndex(nextIdx);
+        window.open(urls[nextIdx], "_blank", "noreferrer");
+      }
+    }
+  };
+
+  return (
+    <a
+      href={currentUrl}
+      target="_blank"
+      rel="noreferrer"
+      onClick={handleClick}
+      className={[
+        "group/play flex w-full items-center gap-3 rounded-2xl border p-3 no-underline transition-all",
+        isVerified
+          ? "border-blue-500/20 bg-blue-500/5 hover:border-blue-500/40 hover:bg-blue-500/10"
+          : "border-emerald-500/20 bg-emerald-500/5 hover:border-emerald-500/40 hover:bg-emerald-500/10",
+      ].join(" ")}
+    >
+      <span className={[
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-lg transition-transform group-hover/play:scale-105",
+        isVerified ? "bg-blue-500 shadow-blue-500/25" : "bg-emerald-500 shadow-emerald-500/25",
+      ].join(" ")}>
+        <Headphones className="h-4 w-4 text-black" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-white">Escuchar</p>
+        <p className="font-mono text-[10px] text-zinc-500 truncate">Abrir en IPFS Gateway</p>
+      </div>
+      <ExternalLink className={`h-3.5 w-3.5 shrink-0 transition-colors ${
+        isVerified
+          ? "text-blue-500/40 group-hover/play:text-blue-500"
+          : "text-emerald-500/40 group-hover/play:text-emerald-500"
+      }`} />
+    </a>
   );
 }
 
@@ -183,13 +380,13 @@ export const Explorer = () => {
     const loadWorks = async () => {
       try {
         setLoading(true);
+        FAILED_CIDS.clear();
         const lh = LighthouseService.getInstance();
-        const files = await lh.listUploads();
+        const files = await lh.listAllUploads();
 
         console.log('═══════════════════════════════════════');
         console.log(`📦 TOTAL ARCHIVOS: ${files.length}`);
 
-        // ✨ FILTRO MEJORADO v2: Excluir octet-stream que no son encriptados reales
         const audioFiles = files.filter((f: any) => {
           const fileName = f.fileName.toLowerCase();
           const mimeType = f.mimeType?.toLowerCase() || '';
@@ -206,6 +403,7 @@ export const Explorer = () => {
           
           // Excluir blobs/text que son metadatos (CIDs que empiezan con bafkrei)
           if (fileName === 'blob' || fileName === 'text') {
+            console.log(`🚫 Excluyendo text/blob (posible metadata): ${f.cid} (${fileName})`);
             if (f.cid?.startsWith('bafkrei')) return false;
           }
           
@@ -214,13 +412,18 @@ export const Explorer = () => {
             return true;
           }
           
-          // ✨ Para octet-stream: solo incluir si NO tiene extensión (encriptados reales)
+          // Excluir octet-stream: estos son los blobs que no queremos mostrar
           if (mimeType === 'application/octet-stream') {
-            if (!fileName.includes('.')) {
-              return true;
-            }
+            console.log(`🚫 Excluyendo octet-stream (blob): ${f.cid} (${fileName})`);
+            return false;
           }
           
+          // Excluir archivos blob con nombres genéricos
+          if (fileName === 'blob' || fileName === 'text') {
+            console.log(`🚫 Excluyendo archivo blob/text: ${f.cid} (${fileName})`);
+          return false;
+          }
+
           return false;
         });
 
@@ -240,34 +443,21 @@ export const Explorer = () => {
         console.log(`🎵 AUDIOS (antes de deduplicar): ${audioFiles.length}`);
         console.log(`📄 METADATA JSONs: ${metadataJsons.length}`);
 
-        // ✨ PROCESAR EN LOTES PARA EVITAR RATE LIMITING
-        const BATCH_SIZE = 3; // Procesar de 3 en 3
-        const validMetadatas: any[] = [];
-        
-        for (let i = 0; i < metadataJsons.length; i += BATCH_SIZE) {
-          const batch = metadataJsons.slice(i, i + BATCH_SIZE);
-          
-          const batchResults = await Promise.allSettled(
-            batch.map(async (f: any) => {
-              const json = await fetchMetadataWithCache(f.cid, f.fileName);
-              if (json) {
-                return { cid: f.cid, fileName: f.fileName, json };
-              }
-              throw new Error('No metadata');
-            })
-          );
-          
-          for (const r of batchResults) {
-            if (r.status === "fulfilled") {
-              validMetadatas.push(r.value);
-            }
+        const METADATA_CONCURRENCY =
+          typeof navigator !== "undefined" &&
+          /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+            ? 3
+            : 5;
+
+        const metadataRows = await mapWithConcurrency(
+          metadataJsons,
+          METADATA_CONCURRENCY,
+          async (f: any) => {
+            const json = await fetchMetadataWithCache(f.cid, f.fileName);
+            return json ? { cid: f.cid, fileName: f.fileName, json } : null;
           }
-          
-          // Pequeña pausa entre lotes para no saturar
-          if (i + BATCH_SIZE < metadataJsons.length) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
-        }
+        );
+        const validMetadatas = metadataRows.filter(Boolean) as any[];
 
         console.log(`✅ Metadatos válidos obtenidos: ${validMetadatas.length}`);
 
@@ -276,9 +466,7 @@ export const Explorer = () => {
         
         for (const item of validMetadatas) {
           const { json } = item;
-          const animUrl: string = json.animation_url ?? "";
-          const audioCidFromJson = animUrl.replace("ipfs://", "").trim();
-          
+          const audioCidFromJson = extractLinkedAudioCid(json);
           if (audioCidFromJson) {
             metadataByAudioCid.set(audioCidFromJson, json);
           }
@@ -307,8 +495,12 @@ export const Explorer = () => {
         console.log(`🎵 AUDIOS (deduplicados por CID): ${dedupedAudioFiles.length}`);
 
         // Construir WorkCards
+        const lighthouseTime = (f: any) =>
+          Number(f?.createdAt ?? f?.lastUpdate ?? 0) || 0;
+
         const cards: WorkCard[] = dedupedAudioFiles.map((audio: any) => {
           const meta = metadataByAudioCid.get(audio.cid);
+          const uploadedAt = lighthouseTime(audio);
 
           if (!meta) {
             return {
@@ -319,6 +511,8 @@ export const Explorer = () => {
               isEncrypted: audio.mimeType === "application/octet-stream" || !audio.fileName.includes("."),
               isVerified: false,
               hasMetadata: false,
+              customCoverUrl: null,
+              uploadedAt,
             };
           }
 
@@ -360,6 +554,14 @@ export const Explorer = () => {
             encryptedAttr?.value === true ||
             audio.mimeType === "application/octet-stream";
 
+          const rawImage = typeof meta.image === "string" ? meta.image.trim() : "";
+          const customCoverUrl =
+            rawImage &&
+            rawImage !== DEFAULT_NFT_METADATA_IMAGE &&
+            rawImage.toLowerCase().startsWith("ipfs://")
+              ? LighthouseService.gatewayUrl(rawImage.replace(/^ipfs:\/\//i, ""))
+              : null;
+
           return {
             audioCid: audio.cid,
             fileName: audio.fileName,
@@ -369,6 +571,8 @@ export const Explorer = () => {
             isVerified: !!mbInfo,
             mbInfo,
             hasMetadata: true,
+            customCoverUrl,
+            uploadedAt,
           };
         });
 
@@ -379,7 +583,7 @@ export const Explorer = () => {
         const uniqueCards = new Map<string, WorkCard>();
         
         for (const card of cards) {
-          const key = `${card.title.toLowerCase().trim()}__${card.artist.toLowerCase().trim()}`;
+          const key = workCardDedupeKey(card);
           const existing = uniqueCards.get(key);
           
           if (!existing) {
@@ -388,10 +592,13 @@ export const Explorer = () => {
           } else {
             const cardHasReleaseId = !!card.mbInfo?.releaseId;
             const existingHasReleaseId = !!existing.mbInfo?.releaseId;
-            
-            const cardTimestamp = card.fileName.match(/\d{13}/)?.[0] || '';
-            const existingTimestamp = existing.fileName.match(/\d{13}/)?.[0] || '';
-            const cardIsNewer = cardTimestamp > existingTimestamp;
+
+            const fromName = (c: WorkCard) => Number(c.fileName.match(/\d{13}/)?.[0] ?? 0) || 0;
+            const cardTime = Math.max(card.uploadedAt || 0, fromName(card));
+            const existingTime = Math.max(existing.uploadedAt || 0, fromName(existing));
+            const cardIsNewer =
+              cardTime > existingTime ||
+              (cardTime === existingTime && card.audioCid > existing.audioCid);
             
             let shouldReplace = false;
             let reason = '';
@@ -429,9 +636,8 @@ export const Explorer = () => {
         
         console.log(`📊 Antes de filtrar para demo: ${finalCards.length} obras`);
         
-        const demoCards = finalCards.filter(card => 
-          card.hasMetadata && !card.isEncrypted
-        );
+        // Obras con metadata enlazada (públicas o cifradas). Antes se excluían las cifradas y no había enlace sin `animation_url`.
+        const demoCards = finalCards.filter((card) => card.hasMetadata || card.isEncrypted);
         
         console.log(`🎯 DEMO FINAL: ${demoCards.filter(c => c.isVerified).length} MB Verified de ${demoCards.length} total`);
         console.log('═══════════════════════════════════════');
@@ -453,9 +659,14 @@ export const Explorer = () => {
     loadWorks();
   }, []);
 
-  const handleImageError = (audioCid: string) => {
-    setImageErrors(prev => new Set(prev).add(audioCid));
-  };
+  const handleImageError = useCallback((cid: string) => {
+    setImageErrors((prev) => {
+      if (prev.has(cid)) return prev;
+      const next = new Set(prev);
+      next.add(cid);
+      return next;
+    });
+  }, []);
 
   if (!ready || loading) {
     return (
@@ -481,10 +692,6 @@ export const Explorer = () => {
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 pt-2">
       {works.map((work, index) => {
-        const publicAudioUrl = !work.isEncrypted && work.audioCid
-          ? LighthouseService.audioUrl(work.audioCid, "audio/mpeg")
-          : "";
-
         const borderColor = work.isVerified
           ? "hover:border-blue-500/30 hover:shadow-blue-500/10"
           : "hover:border-emerald-500/20 hover:shadow-emerald-500/5";
@@ -526,7 +733,8 @@ export const Explorer = () => {
                     <CoverImage
                       releaseId={work.mbInfo.releaseId}
                       title={work.title}
-                      onFinalError={() => handleImageError(work.audioCid)}
+                      audioCid={work.audioCid}
+                      onUnavailable={handleImageError}
                     />
                   ) : (
                     <div className="h-48 w-full flex flex-col items-center justify-center">
@@ -540,10 +748,24 @@ export const Explorer = () => {
                 </div>
               ) : (
                 <div className="mb-4 overflow-hidden rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-emerald-600/5">
-                  <div className="h-48 w-full flex flex-col items-center justify-center">
-                    <Music className="h-12 w-12 text-emerald-400/60 mb-2" />
-                    <p className="font-mono text-[10px] uppercase tracking-wider text-emerald-400/60">Original</p>
-                  </div>
+                  {work.customCoverUrl && !imageErrors.has(`cover-${work.audioCid}`) ? (
+                    <div className="flex items-center justify-center bg-black/20 p-2">
+                      <img
+                        src={work.customCoverUrl}
+                        alt=""
+                        className="h-48 w-full object-contain"
+                        loading="lazy"
+                        onError={() =>
+                          setImageErrors((prev) => new Set(prev).add(`cover-${work.audioCid}`))
+                        }
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-48 w-full flex flex-col items-center justify-center">
+                      <Music className="h-12 w-12 text-emerald-400/60 mb-2" />
+                      <p className="font-mono text-[10px] uppercase tracking-wider text-emerald-400/60">Original</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -590,36 +812,11 @@ export const Explorer = () => {
                       Conectar para Escuchar
                     </Button>
                   )
-                ) : publicAudioUrl ? (
-                  <a
-                    href={publicAudioUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={[
-                      "group/play flex w-full items-center gap-3 rounded-2xl border p-3 no-underline transition-all",
-                      work.isVerified
-                        ? "border-blue-500/20 bg-blue-500/5 hover:border-blue-500/40 hover:bg-blue-500/10"
-                        : "border-emerald-500/20 bg-emerald-500/5 hover:border-emerald-500/40 hover:bg-emerald-500/10",
-                    ].join(" ")}
-                  >
-                    <span className={[
-                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-lg transition-transform group-hover/play:scale-105",
-                      work.isVerified
-                        ? "bg-blue-500 shadow-blue-500/25"
-                        : "bg-emerald-500 shadow-emerald-500/25",
-                    ].join(" ")}>
-                      <Headphones className="h-4 w-4 text-black" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-white">Escuchar</p>
-                      <p className="font-mono text-[10px] text-zinc-500 truncate">Abrir en IPFS Gateway</p>
-                    </div>
-                    <ExternalLink className={`h-3.5 w-3.5 shrink-0 transition-colors ${
-                      work.isVerified
-                        ? "text-blue-500/40 group-hover/play:text-blue-500"
-                        : "text-emerald-500/40 group-hover/play:text-emerald-500"
-                    }`} />
-                  </a>
+                ) : work.audioCid ? (
+                  <AudioLink
+                    audioCid={work.audioCid}
+                    isVerified={work.isVerified}
+                  />
                 ) : (
                   <div className="rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">
                     <p className="font-mono text-[10px] text-zinc-500">

@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "motion/react";
 import {
   CheckCircle2, Lock, Unlock, Link2, Unlink2, Upload, Loader2,
-  AlertTriangle, ExternalLink,
+  AlertTriangle, ExternalLink, ImageIcon,
 } from "lucide-react";
 import type { FingerprintResult } from "@/services/AudioFingerprintService";
 import type { CatalogAuthenticityReport } from "@/types/acoustid";
@@ -28,6 +28,8 @@ interface Props {
   audioFile: File;
   authenticityScore: number;
   catalogReport?: CatalogAuthenticityReport;
+  /** Portada opcional (obras muy originales, sin match fuerte en catálogo). */
+  optionalCoverArtEnabled?: boolean;
 }
 
 type UploadStage = "idle" | "uploading-audio" | "uploading-metadata" | "done" | "error";
@@ -38,6 +40,7 @@ export function IPFSUploadForm({
   audioFile,
   authenticityScore,
   catalogReport,
+  optionalCoverArtEnabled = false,
 }: Props) {
   const { signMessage } = useWallet();
 
@@ -57,6 +60,8 @@ export function IPFSUploadForm({
   const [error, setError] = useState<string | null>(null);
   const [audioCid, setAudioCid] = useState("");
   const [metadataCid, setMetadataCid] = useState("");
+  const [coverArtFile, setCoverArtFile] = useState<File | null>(null);
+  const [coverArtPreview, setCoverArtPreview] = useState<string | null>(null);
 
   // ✨ EFECTO DE SINCRONIZACIÓN: Desbloquea el botón cuando llega el reporte
   useEffect(() => {
@@ -65,6 +70,16 @@ export function IPFSUploadForm({
       setArtist(mbMatch.artist ?? "");
     }
   }, [hasMBMatch, mbMatch]);
+
+  useEffect(() => {
+    if (!coverArtFile) {
+      setCoverArtPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(coverArtFile);
+    setCoverArtPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [coverArtFile]);
 
   const isUploading = stage === "uploading-audio" || stage === "uploading-metadata";
   const isDone = stage === "done";
@@ -99,6 +114,17 @@ export function IPFSUploadForm({
       setAudioCid(audioResult.cid);
       console.log("✅ Audio subido:", audioResult.cid);
 
+      let artworkCid: string | undefined;
+      if (optionalCoverArtEnabled && coverArtFile) {
+        setStageMsg("Subiendo portada a IPFS...");
+        const art = await lh.uploadPublic(
+          coverArtFile,
+          coverArtFile.name || "cover.jpg",
+          undefined
+        );
+        artworkCid = art.cid;
+      }
+
       // ── 2. Subir metadata ERC-721 JSON ────────────────────────────────────
       setStage("uploading-metadata");
       setStageMsg("Subiendo metadata a IPFS...");
@@ -120,7 +146,8 @@ export function IPFSUploadForm({
         audioResult.cid,
         audioResult.encrypted,
         audioFile.type || "audio/mpeg",
-        mbInfo
+        mbInfo,
+        artworkCid
       );
       setMetadataCid(mCid);
       console.log("✅ Metadata subida:", mCid);
@@ -128,6 +155,7 @@ export function IPFSUploadForm({
       lh.saveUploadRecord({
         metadataCid: mCid,
         audioCid: audioResult.cid,
+        artworkCid,
         title: title.trim(),
         artist: artist.trim(),
         encrypted: audioResult.encrypted,
@@ -154,6 +182,8 @@ export function IPFSUploadForm({
       setTitle("");
       setArtist("");
     }
+    setCoverArtFile(null);
+    setCoverArtPreview(null);
   };
 
   if (isDone && metadataCid) {
@@ -241,6 +271,62 @@ export function IPFSUploadForm({
       )}
 
       <div className="space-y-4">
+        {optionalCoverArtEnabled && !isHighRisk && (
+          <div className="rounded-2xl border border-dashed border-emerald-500/25 bg-emerald-500/[0.03] p-4">
+            <div className="mb-2 flex items-center gap-2">
+              <ImageIcon className="h-4 w-4 text-emerald-500/80" />
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">
+                Portada opcional
+              </span>
+            </div>
+            <p className="mb-3 text-[11px] leading-relaxed text-zinc-500">
+              Obra muy original: puedes subir una imagen (JPG, PNG, WebP) para el certificado y el explorador.
+            </p>
+            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-surface-border bg-surface-overlay/50 px-3 py-2.5 transition-colors hover:border-emerald-500/30">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-surface-border bg-black/40">
+                {coverArtPreview ? (
+                  <img src={coverArtPreview} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <ImageIcon className="h-5 w-5 text-zinc-600" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-white">
+                  {coverArtFile ? coverArtFile.name : "Elegir imagen"}
+                </p>
+                <p className="font-mono text-[9px] text-zinc-600">Opcional · máx. recomendado 5 MB</p>
+              </div>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  if (f.size > 6 * 1024 * 1024) {
+                    setError("La imagen supera 6 MB. Elige un archivo más pequeño.");
+                    return;
+                  }
+                  setCoverArtFile(f);
+                  setError(null);
+                }}
+              />
+            </label>
+            {coverArtFile && (
+              <button
+                type="button"
+                className="mt-2 font-mono text-[10px] text-zinc-500 underline-offset-2 hover:text-zinc-400 hover:underline"
+                onClick={() => {
+                  setCoverArtFile(null);
+                  setCoverArtPreview(null);
+                }}
+              >
+                Quitar imagen
+              </button>
+            )}
+          </div>
+        )}
+
         <div>
           <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-zinc-400">
             Título {hasMBMatch && <span className="text-blue-400/60">(verificado)</span>}
