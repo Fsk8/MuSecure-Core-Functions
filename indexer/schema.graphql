@@ -1,0 +1,37 @@
+type Author {
+  id: ID! # wallet address
+  works: [Work!]! @derivedFrom(field: "author")
+  certificates: [Certificate!]! @derivedFrom(field: "owner")
+}
+
+type Work {
+  id: ID! # fingerprintHash (bytes32 as hex string)
+  fingerprintHash: String!
+  ipfsCid: String!
+  authenticityScore: BigInt!
+  riskLevel: Int! # 0=Low, 1=Medium, 2=High, 3=Blocked
+  tokenId: BigInt!
+  registeredAt: BigInt! # block timestamp
+  txHash: String!
+  author: Author!
+  certificate: Certificate
+}
+
+type Certificate {
+  id: ID! # tokenId as string
+  tokenId: BigInt!
+  owner: Author!
+  ipfsCid: String!
+  soulbound: Boolean!
+  mintedAt: BigInt!
+  txHash: String!
+}
+
+type WorkBlockedEvent {
+  id: ID! # txHash-logIndex
+  author: Author!
+  fingerprintHash: String!
+  authenticityScore: BigInt!
+  blockedAt: BigInt!
+  txHash: String!
+}

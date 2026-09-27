@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+name: musecure-indexer
+disable_default_cross_chain: true
+
+field_selection:
+  transaction_fields:
+    - hash
+
+chains:
+  - id: 421614
+    start_block: 0
+    contracts:
+      - name: MuSecureAsset
+        address:
+          - "0xB98f9ba09E4eAb9b6fc2d680d74Bd17414609603"
+        events:
+          - event: CertificateMinted(address indexed to, uint256 indexed tokenId, string ipfsCid, bool soulbound)
+          - event: SoulboundStatusChanged(uint256 indexed tokenId, bool soulbound)
+          - event: Transfer(address indexed from, address indexed to, uint256 indexed tokenId)
+      - name: MuSecureRegistry
+        address:
+          - "0xA6d7331cB2438007cEFF711005d1E90ff01f53D4"
+        events:
+          - event: WorkRegistered(address indexed author, bytes32 indexed fingerprintHash, string ipfsCid, uint256 authenticityScore, uint8 riskLevel, uint256 tokenId, uint256 timestamp)
+          - event: WorkBlocked(address indexed author, bytes32 indexed fingerprintHash, uint256 authenticityScore, uint256 timestamp)
+          - event: ScoreSignerUpdated(address indexed oldSigner, address indexed newSigner)
