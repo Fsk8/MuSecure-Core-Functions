@@ -4,18 +4,20 @@
  * CORRECCIÓN: Mapeo de metadata para nombres de artista y títulos dinámicos.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallet } from "@/hooks/useWallet";
 import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
 import { LighthouseService } from "@/services/LighthouseService";
+import { getWorksByAuthor, getAllWorks, getStats, type IndexedWork, type IndexerStats } from "@/services/EnvioIndexerService";
+import { goToArtistProfile } from "@/lib/Artistnavigation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion, AnimatePresence } from "motion/react";
-import { RefreshCw, ExternalLink, Shield, Music, Headphones, Globe, User } from "lucide-react";
+import { RefreshCw, ExternalLink, Shield, Music, Headphones, Globe, User, Users, BarChart3, Search, X } from "lucide-react";
 import type { MuSecureMetadata } from "@/types/ipfs";
 
 const REGISTRY_ABI = [
@@ -51,6 +53,66 @@ interface WorkItem {
   metaLoading: boolean;
 }
 
+function cleanCid(raw: string): string {
+  return String(raw).trim().replace("ipfs://", "").split("?")[0].split("/")[0];
+}
+
+/** Adapta una obra del indexer Envio al shape que usa este dashboard. */
+function indexedToWorkItem(w: IndexedWork): WorkItem {
+  return {
+    tokenId: Number(w.tokenId),
+    metadataCid: cleanCid(w.ipfsCid),
+    audioCid: "",
+    authenticityScore: Number(w.authenticityScore),
+    riskLevel: Number(w.riskLevel),
+    timestamp: Number(w.registeredAt) * 1000,
+    txHash: w.txHash,
+    author: w.author.id,
+    title: `Obra #${Number(w.tokenId)}`,
+    artist: "...",
+    isEncrypted: false,
+    metaLoading: true,
+  };
+}
+
+/** Fallback: lee eventos WorkRegistered directo del RPC (por si el indexer no responde). */
+async function fetchWorksFromRpc(authorAddress: string | null): Promise<WorkItem[]> {
+  const RPC_ENDPOINTS = [
+    "https://sepolia-rollup.arbitrum.io/rpc",
+    import.meta.env.VITE_RPC_URL,
+  ].filter(Boolean);
+
+  for (const url of RPC_ENDPOINTS) {
+    try {
+      const provider = new ethers.JsonRpcProvider(url, undefined, { staticNetwork: true });
+      const contract = new ethers.Contract(import.meta.env.VITE_REGISTRY_ADDRESS, REGISTRY_ABI, provider);
+      const filter = contract.filters.WorkRegistered(authorAddress ? ethers.getAddress(authorAddress) : null);
+      const logs: any[] = await contract.queryFilter(filter, DEPLOY_BLOCK, "latest");
+
+      return logs.map((log) => {
+        const { author, ipfsCid, authenticityScore, riskLevel, tokenId, timestamp } = log.args;
+        return {
+          tokenId: Number(tokenId),
+          metadataCid: cleanCid(ipfsCid),
+          audioCid: "",
+          authenticityScore: Number(authenticityScore),
+          riskLevel: Number(riskLevel),
+          timestamp: Number(timestamp) * 1000,
+          txHash: log.transactionHash,
+          author,
+          title: `Obra #${Number(tokenId)}`,
+          artist: "...",
+          isEncrypted: false,
+          metaLoading: true,
+        };
+      });
+    } catch {
+      console.warn(`RPC Falló: ${url}`);
+    }
+  }
+  throw new Error("Todos los RPC fallaron");
+}
+
 export function Dashboard() {
   const { authenticated, login } = usePrivy();
   const { address, signMessage, isReady } = useWallet();
@@ -60,6 +122,9 @@ export function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [showOnlyMine, setShowOnlyMine] = useState(true);
+  const [artistQuery, setArtistQuery] = useState("");
+  const [dataSource, setDataSource] = useState<"envio" | "rpc" | null>(null);
+  const [stats, setStats] = useState<IndexerStats | null>(null);
 
   const fetchWorks = useCallback(async () => {
     if (showOnlyMine && !address) return;
@@ -67,56 +132,31 @@ export function Dashboard() {
     setFetchError(null);
     setRefreshing(true);
 
-    const RPC_ENDPOINTS = [
-      "https://sepolia-rollup.arbitrum.io/rpc", 
-      import.meta.env.VITE_RPC_URL 
-    ].filter(Boolean);
+    let items: WorkItem[] = [];
 
-    let logs: any[] = [];
-    let success = false;
+    // 1) Fuente principal: indexer Envio (GraphQL) — rápido, sin escanear logs on-chain
+    try {
+      const indexed = showOnlyMine
+        ? await getWorksByAuthor(address!)
+        : await getAllWorks(500);
+      items = indexed.map(indexedToWorkItem);
+      setDataSource("envio");
+    } catch (indexerErr) {
+      console.warn("[Dashboard] Envio no disponible, usando RPC directo:", indexerErr);
 
-    for (const url of RPC_ENDPOINTS) {
-      if (success) break;
+      // 2) Fallback: leer eventos directo del RPC (comportamiento anterior)
       try {
-        const provider = new ethers.JsonRpcProvider(url, undefined, { staticNetwork: true });
-        const contract = new ethers.Contract(import.meta.env.VITE_REGISTRY_ADDRESS, REGISTRY_ABI, provider);
-        
-        const filter = contract.filters.WorkRegistered(showOnlyMine ? ethers.getAddress(address!) : null);
-        
-        logs = await contract.queryFilter(filter, DEPLOY_BLOCK, "latest");
-        success = true;
-      } catch (e) {
-        console.warn(`RPC Falló: ${url}`);
+        items = await fetchWorksFromRpc(showOnlyMine ? address! : null);
+        setDataSource("rpc");
+      } catch {
+        setFetchError("Error de red. Prueba sincronizar de nuevo.");
+        setLoading(false);
+        setRefreshing(false);
+        return;
       }
     }
 
-    if (!success) {
-      setFetchError("Error de red. Prueba sincronizar de nuevo.");
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-
     try {
-      const items: WorkItem[] = logs.map((log) => {
-        const { author, ipfsCid, authenticityScore, riskLevel, tokenId, timestamp } = log.args;
-        const cleanCid = String(ipfsCid).trim().replace("ipfs://", "").split("?")[0].split("/")[0];
-
-        return {
-          tokenId: Number(tokenId),
-          metadataCid: cleanCid,
-          audioCid: "",
-          authenticityScore: Number(authenticityScore),
-          riskLevel: Number(riskLevel),
-          timestamp: Number(timestamp) * 1000,
-          txHash: log.transactionHash,
-          author: author,
-          title: `Obra #${Number(tokenId)}`,
-          artist: "...",
-          isEncrypted: false,
-          metaLoading: true,
-        };
-      });
 
       setWorks(items.sort((a, b) => b.timestamp - a.timestamp));
 
@@ -155,10 +195,16 @@ export function Dashboard() {
           }
 
           // Soporte dual: formato MuSecure (encryptedAudio) + ERC-721 (animation_url)
+          // + fallback al atributo "AudioCID" (obras cifradas: animation_url viene vacío).
           const animUrl: string = (meta as any).animation_url ?? "";
+          const audioCidAttr = meta.attributes?.find((a: any) => {
+            const tt = String(a?.trait_type ?? "").trim().toLowerCase();
+            return tt === "audiocid" || tt === "audio cid" || tt === "audio_cid";
+          })?.value;
           const audioCid =
-            meta.encryptedAudio?.ciphertextCid
-            ?? (animUrl ? animUrl.replace("ipfs://", "").trim() : "");
+            (meta.encryptedAudio?.ciphertextCid
+              ?? (animUrl ? animUrl.replace("ipfs://", "").trim() : ""))
+            || (typeof audioCidAttr === "string" ? audioCidAttr.replace("ipfs://", "").trim() : "");
 
           const protAttr = meta.attributes?.find(
             (a: any) => a.trait_type === "Protección" || a.trait_type === "Encrypted"
@@ -193,6 +239,30 @@ export function Dashboard() {
     if (authenticated) fetchWorks();
   }, [authenticated, fetchWorks]);
 
+  useEffect(() => {
+    if (!authenticated) return;
+    getStats()
+      .then(setStats)
+      .catch((e) => console.warn("[Dashboard] No se pudieron cargar las stats:", e));
+  }, [authenticated]);
+
+  // Filtro por artista: busca en los datos ya cargados, sin pegarle de nuevo a Envio.
+  // Acepta la wallet completa o un fragmento (ej. los últimos 4 caracteres).
+  // También oculta obras cifradas "huérfanas" (metadata antigua sin atributo AudioCID) —
+  // nunca serán reproducibles, así que no vale la pena mostrarlas en el feed.
+  const filteredWorks = useMemo(() => {
+    const q = artistQuery.trim().toLowerCase();
+    return works.filter((w) => {
+      if (w.isEncrypted && !w.metaLoading && !w.audioCid) return false;
+      if (!q) return true;
+      return w.author.toLowerCase().includes(q);
+    });
+  }, [works, artistQuery]);
+
+  function shortAddress(addr: string): string {
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  }
+
   if (!authenticated) {
     return (
       <div className="flex flex-col items-center gap-4 py-24 border border-dashed border-emerald-500/20 rounded-[3rem] mt-4 bg-zinc-900/10">
@@ -210,7 +280,7 @@ export function Dashboard() {
             {showOnlyMine ? "Mis Protecciones" : "Explorar Obras"}
           </h2>
           <p className="font-mono text-[10px] uppercase tracking-widest text-emerald-500/60 mt-1">
-             Arbitrum Sepolia Ledger
+             Arbitrum Sepolia Ledger{dataSource === "envio" && " · ⚡ Indexed by Envio"}
           </p>
         </div>
 
@@ -245,6 +315,89 @@ export function Dashboard() {
         </div>
       </div>
 
+      {!showOnlyMine && (
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+          <input
+            type="text"
+            value={artistQuery}
+            onChange={(e) => setArtistQuery(e.target.value)}
+            placeholder="Filtrar por wallet del artista (0x... o los últimos caracteres)"
+            className="w-full rounded-2xl border border-zinc-800 bg-zinc-900/50 py-3 pl-10 pr-10 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-emerald-500/50 focus:outline-none"
+          />
+          {artistQuery && (
+            <button
+              onClick={() => setArtistQuery("")}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {artistQuery && (
+            <p className="mt-2 font-mono text-[10px] text-zinc-500">
+              {filteredWorks.length} obra{filteredWorks.length !== 1 ? "s" : ""}
+              {filteredWorks.length > 0 && (
+                <>
+                  {" "}· Artista: <span className="text-emerald-400">{shortAddress(filteredWorks[0].author)}</span>
+                  {" "}·{" "}
+                  <button
+                    onClick={() => goToArtistProfile(filteredWorks[0].author)}
+                    className="text-violet-400 hover:underline"
+                  >
+                    Ver perfil completo →
+                  </button>
+                </>
+              )}
+            </p>
+          )}
+        </div>
+      )}
+
+      {stats && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4">
+            <div className="flex items-center gap-2 text-zinc-600">
+              <Shield className="h-3 w-3" />
+              <p className="font-mono text-[9px] uppercase tracking-widest">Obras Registradas</p>
+            </div>
+            <p className="mt-1 font-display text-2xl font-bold text-white">{stats.totalWorks}</p>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4">
+            <div className="flex items-center gap-2 text-zinc-600">
+              <Users className="h-3 w-3" />
+              <p className="font-mono text-[9px] uppercase tracking-widest">Autores Únicos</p>
+            </div>
+            <p className="mt-1 font-display text-2xl font-bold text-white">{stats.uniqueAuthors}</p>
+          </div>
+
+          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+            <div className="flex items-center gap-2 text-emerald-400/70">
+              <BarChart3 className="h-3 w-3" />
+              <p className="font-mono text-[9px] uppercase tracking-widest">Score Promedio</p>
+            </div>
+            <p className="mt-1 font-display text-2xl font-bold text-emerald-400">{stats.avgAuthenticityScore}%</p>
+          </div>
+
+          <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
+            <div className="flex items-center gap-2 text-violet-400/70">
+              <Shield className="h-3 w-3" />
+              <p className="font-mono text-[9px] uppercase tracking-widest">% Soulbound</p>
+            </div>
+            <p className="mt-1 font-display text-2xl font-bold text-violet-400">{stats.soulboundPercentage}%</p>
+          </div>
+
+          <div className="col-span-2 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4 sm:col-span-4">
+            <p className="mb-2 font-mono text-[9px] uppercase tracking-widest text-zinc-600">Por Nivel de Riesgo (obras registradas exitosamente)</p>
+            <div className="flex items-center gap-4 font-mono text-[10px]">
+              <span className="text-emerald-400">Bajo {stats.riskBreakdown.low}</span>
+              <span className="text-amber-400">Medio {stats.riskBreakdown.medium}</span>
+              <span className="text-red-400">Alto {stats.riskBreakdown.high}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {fetchError && (
         <p className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-2 font-mono text-xs text-amber-400">
           {fetchError}
@@ -255,10 +408,17 @@ export function Dashboard() {
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-64 rounded-[2.5rem] bg-zinc-900/50" />)}
         </div>
+      ) : artistQuery && filteredWorks.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-[2.5rem] border border-dashed border-zinc-800 py-20">
+          <Search className="h-8 w-8 text-zinc-700" />
+          <p className="font-mono text-xs uppercase tracking-wider text-zinc-600">
+            Ningún artista coincide con "{artistQuery}"
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <AnimatePresence mode="popLayout">
-            {works.map((item) => (
+            {filteredWorks.map((item) => (
               <motion.div 
                 key={item.tokenId} 
                 layout
@@ -288,7 +448,16 @@ export function Dashboard() {
                     ) : (
                       <>
                         <h3 className="truncate font-display text-lg font-bold text-white tracking-tight uppercase group-hover:text-emerald-400 transition-colors">{item.title}</h3>
-                        <p className="mt-1 mb-6 font-mono text-[10px] uppercase tracking-widest text-zinc-500 italic">By {item.artist}</p>
+                        <p className={`mt-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500 italic ${showOnlyMine ? "mb-6" : "mb-1"}`}>By {item.artist}</p>
+                        {!showOnlyMine && (
+                          <button
+                            onClick={() => goToArtistProfile(item.author)}
+                            title={`Ver perfil de ${item.author}`}
+                            className="mb-6 flex items-center gap-1 font-mono text-[9px] text-zinc-600 hover:text-emerald-400 transition-colors"
+                          >
+                            <User className="h-2.5 w-2.5" /> {shortAddress(item.author)}
+                          </button>
+                        )}
                       </>
                     )}
 
@@ -307,12 +476,26 @@ export function Dashboard() {
                   <div className="mt-auto space-y-4">
                     {!item.metaLoading && (
                       item.isEncrypted ? (
-                        isReady && address && signMessage ? (
-                          <EncryptedAudioPlayer cid={item.audioCid} ownerAddress={address} signMessage={signMessage} />
+                        !item.audioCid ? (
+                          <div className="w-full rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">
+                            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
+                              Metadata antigua — audio no vinculado
+                            </p>
+                          </div>
+                        ) : address && item.author.toLowerCase() === address.toLowerCase() ? (
+                          isReady && signMessage ? (
+                            <EncryptedAudioPlayer cid={item.audioCid} ownerAddress={address} signMessage={signMessage} />
+                          ) : (
+                            <Button onClick={login} className="w-full rounded-2xl bg-zinc-800 border-zinc-700 hover:bg-zinc-700" variant="secondary">
+                              <Shield className="h-3.5 w-3.5 mr-2" /> Desbloquear
+                            </Button>
+                          )
                         ) : (
-                          <Button onClick={login} className="w-full rounded-2xl bg-zinc-800 border-zinc-700 hover:bg-zinc-700" variant="secondary">
-                            <Shield className="h-3.5 w-3.5 mr-2" /> Desbloquear
-                          </Button>
+                          <div className="w-full rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">
+                            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
+                              Cifrado — solo el propietario puede reproducirlo
+                            </p>
+                          </div>
                         )
                       ) : item.audioCid ? (
                         <a href={LighthouseService.audioUrl(item.audioCid)} target="_blank" className="flex w-full items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 hover:bg-emerald-500/10 transition-colors group/btn no-underline">

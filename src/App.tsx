@@ -1,6 +1,9 @@
 import { FingerprintUploader } from "@/components/FingerprintUploader";
 import { Dashboard } from "@/pages/Dashboard";
 import { Explorer } from "@/components/Explorer";
+import { ArtistProfile } from "@/pages/Artistprofile";
+import { getArtistFromUrl, onArtistNavigate } from "@/lib/Artistnavigation";
+import { useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useGasAirdrop } from "@/hooks/useGasAirdrop";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -76,6 +79,12 @@ function EmptyState({
 export default function App() {
   const { ready, authenticated, user, login, logout } = usePrivy();
   const { address } = useWallet();
+
+  const [artistParam, setArtistParam] = useState<string | null>(() => getArtistFromUrl());
+
+  useEffect(() => {
+    return onArtistNavigate(() => setArtistParam(getArtistFromUrl()));
+  }, []);
   
   const { airdropMessage } = useGasAirdrop(
     address || null,
@@ -155,6 +164,11 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {artistParam ? (
+        <div className="mx-auto max-w-6xl px-6 pt-8">
+          <ArtistProfile address={artistParam} />
+        </div>
+      ) : (
       <Tabs defaultValue="upload" className="mx-auto max-w-6xl px-6 pt-8">
         <div className="flex justify-center">
           <TabsList>
@@ -168,7 +182,7 @@ export default function App() {
             </TabsTrigger>
             <TabsTrigger value="explorer" className="gap-2">
               <LayoutGrid className="h-3.5 w-3.5" />
-              Explorar
+              Catalogo
             </TabsTrigger>
           </TabsList>
         </div>
@@ -221,6 +235,7 @@ export default function App() {
           </motion.div>
         </TabsContent>
       </Tabs>
+      )}
 
       <div className="pb-16" />
     </div>
