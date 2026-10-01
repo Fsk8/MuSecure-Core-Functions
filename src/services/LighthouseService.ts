@@ -29,6 +29,29 @@ export interface LocalUploadRecord {
   encrypted: boolean;
   uploadedAt: number;
   ownerAddress: string;
+  collaborators?: CollaboratorInput[];
+}
+
+/** Colaborador tal como lo captura el formulario (antes de normalizar/hashear). */
+export interface CollaboratorInput {
+  email: string;
+  /** 0.01 – 100 (la suma entre colaboradores no puede superar 100). */
+  sharePercentage: number;
+}
+
+/** Colaborador tal como queda escrito en la metadata IPFS. */
+export interface Collaborator {
+  /** Solo presente si EXPOSE_COLLABORATOR_EMAILS = true. */
+  email?: string;
+  /** SHA-256 (hex) del correo en minúsculas: permite casarlo al iniciar sesión sin publicarlo. */
+  emailHash: string;
+  sharePercentage: number;
+  /**
+   * Siempre `false` al subir. La metadata en IPFS es inmutable (el CID está
+   * registrado en el contrato), así que este flag NO puede cambiar después;
+   * el estado real de aprovisionamiento hay que consultarlo en Privy.
+   */
+  privyProvisioned: boolean;
 }
 
 /** Metadata ERC-721 estándar — este CID va al contrato para el mint */
@@ -38,9 +61,59 @@ export interface NFTMetadata {
   image: string;
   animation_url: string;
   attributes: Array<{ trait_type: string; value: string | boolean }>;
+  /** Co-autores y splits (opcional). Los lectores ERC-721 estándar lo ignoran. */
+  collaborators?: Collaborator[];
 }
 
 const LS_KEY = "musecure:uploads";
+
+/**
+ * ¿Publicar los correos de los colaboradores EN CLARO en la metadata IPFS?
+ * La metadata es pública, permanente e indexable, y el correo es de un tercero.
+ *  - true  → `email` + `emailHash` (útil para la demo: se ve quién es quién).
+ *  - false → solo `emailHash`; al iniciar sesión, la app hashea el correo del
+ *            usuario y lo compara contra la metadata.
+ */
+export const EXPOSE_COLLABORATOR_EMAILS = true;
+
+async function sha256Hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** Normaliza, valida y convierte los colaboradores del formulario al formato de metadata. */
+async function buildCollaborators(inputs: CollaboratorInput[] = []): Promise<Collaborator[]> {
+  const seen = new Set<string>();
+  const out: Collaborator[] = [];
+  let totalCents = 0;
+
+  for (const c of inputs) {
+    const email = c.email.trim().toLowerCase();
+    if (!email) continue;
+    if (seen.has(email)) throw new Error(`Colaborador duplicado: ${email}`);
+    seen.add(email);
+
+    const cents = Math.round(Number(c.sharePercentage) * 100);
+    if (!Number.isFinite(cents) || cents <= 0 || cents > 10_000) {
+      throw new Error(`Porcentaje inválido para ${email}`);
+    }
+    totalCents += cents;
+
+    out.push({
+      ...(EXPOSE_COLLABORATOR_EMAILS && { email }),
+      emailHash: await sha256Hex(email),
+      sharePercentage: cents / 100,
+      privyProvisioned: false,
+    });
+  }
+
+  if (totalCents > 10_000) {
+    throw new Error("La suma de participaciones de los colaboradores supera el 100%.");
+  }
+  return out;
+}
 
 /** Imagen por defecto del certificado NFT (sin portada custom). */
 export const DEFAULT_NFT_METADATA_IMAGE =
@@ -158,7 +231,8 @@ export class LighthouseService {
     isEncrypted: boolean,
     mimeType: string,
     mbInfo?: { recordingId: string; title: string; artist: string; scorePercent: number; releaseTitle?: string; releaseId?: string | null; },
-    artworkCid?: string | null
+    artworkCid?: string | null,
+    collaborators?: CollaboratorInput[]
   ): Promise<string> {
     try {
       const lh = await this.getLh();
@@ -186,12 +260,16 @@ export class LighthouseService {
           ? `ipfs://${artworkCid.trim()}`
           : DEFAULT_NFT_METADATA_IMAGE;
 
+      const collaboratorList = await buildCollaborators(collaborators);
+
       const nftMetadata: NFTMetadata = {
         name: title,
         description: `Certificado de Autenticidad MuSecure para la obra "${title}" de ${artist}.`,
         image: imageUri,
         animation_url: isEncrypted ? "" : `ipfs://${audioCid}`,
         attributes,
+        // Solo si hay colaboradores: las subidas normales quedan idénticas a antes.
+        ...(collaboratorList.length > 0 && { collaborators: collaboratorList }),
       };
 
       const jsonStr = JSON.stringify(nftMetadata);

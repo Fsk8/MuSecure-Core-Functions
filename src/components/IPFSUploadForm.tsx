@@ -6,9 +6,14 @@
  * CORRECCIÓN: Sincronización de estado para desbloqueo inmediato del botón al hacer match.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { usePrivy } from "@privy-io/react-auth";
 import { useWallet } from "@/hooks/useWallet";
-import { LighthouseService } from "@/services/LighthouseService";
+import {
+  LighthouseService,
+  EXPOSE_COLLABORATOR_EMAILS,
+  type CollaboratorInput,
+} from "@/services/LighthouseService";
 import { RegisterWorkButton } from "@/components/RegisterWorkButton";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "motion/react";
 import {
   CheckCircle2, Lock, Unlock, Link2, Unlink2, Upload, Loader2,
-  AlertTriangle, ExternalLink, ImageIcon,
+  AlertTriangle, ExternalLink, ImageIcon, Users, Mail, Plus, Trash2, Info,
 } from "lucide-react";
 import type { FingerprintResult } from "@/services/AudioFingerprintService";
 import type { CatalogAuthenticityReport } from "@/types/acoustid";
@@ -34,6 +39,25 @@ interface Props {
 
 type UploadStage = "idle" | "uploading-audio" | "uploading-metadata" | "done" | "error";
 
+const MAX_COLLABORATORS = 10;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+interface CollabRow {
+  id: string;
+  email: string;
+  /** Texto del input (permite decimales a medio escribir). */
+  share: string;
+  /** Se pone en true al salir del campo: evita mostrar errores mientras se escribe. */
+  touched: boolean;
+}
+
+const newRow = (): CollabRow => ({
+  id: Math.random().toString(36).slice(2),
+  email: "",
+  share: "",
+  touched: false,
+});
+
 export function IPFSUploadForm({
   fingerprint,
   ownerAddress,
@@ -43,6 +67,7 @@ export function IPFSUploadForm({
   optionalCoverArtEnabled = false,
 }: Props) {
   const { signMessage } = useWallet();
+  const { user } = usePrivy();
 
   // ── Detectar match de MB ──────────────────────────────────────────────────
   const mbMatch = catalogReport?.matches?.[0];
@@ -62,6 +87,61 @@ export function IPFSUploadForm({
   const [metadataCid, setMetadataCid] = useState("");
   const [coverArtFile, setCoverArtFile] = useState<File | null>(null);
   const [coverArtPreview, setCoverArtPreview] = useState<string | null>(null);
+
+  // ── Co-autores (Privy) ────────────────────────────────────────────────────
+  const [collabRows, setCollabRows] = useState<CollabRow[]>([]);
+  /** Copia congelada al subir, para la pantalla de éxito (el formulario ya no manda). */
+  const [savedCollaborators, setSavedCollaborators] = useState<CollaboratorInput[]>([]);
+
+  // Obras de alto riesgo no se pueden registrar → no hay certificado que repartir.
+  const collabEnabled = !isHighRisk;
+
+  const collab = useMemo(() => {
+    const rowErrors: Record<string, string> = {};
+    const list: CollaboratorInput[] = [];
+    const seen = new Set<string>();
+    const myEmail = user?.email?.address?.toLowerCase();
+    let totalCents = 0;
+
+    if (collabEnabled) {
+      // Las filas totalmente vacías se ignoran; las a medias son error.
+      for (const r of collabRows.filter((r) => r.email.trim() || r.share.trim())) {
+        const email = r.email.trim().toLowerCase();
+        const pct = Number(r.share);
+        if (!EMAIL_RE.test(email)) rowErrors[r.id] = "Correo inválido";
+        else if (myEmail && email === myEmail) rowErrors[r.id] = "Ese es tu propio correo";
+        else if (seen.has(email)) rowErrors[r.id] = "Correo repetido";
+        else if (!r.share.trim() || !Number.isFinite(pct) || pct <= 0 || pct > 100)
+          rowErrors[r.id] = "El % debe estar entre 0.01 y 100";
+        else {
+          seen.add(email);
+          const cents = Math.round(pct * 100);
+          totalCents += cents;
+          list.push({ email, sharePercentage: cents / 100 });
+        }
+      }
+    }
+
+    const overLimit = totalCents > 10_000;
+    const firstError = Object.values(rowErrors)[0];
+    return {
+      list,
+      rowErrors,
+      overLimit,
+      totalPct: totalCents / 100,
+      creatorPct: Math.max(0, 10_000 - totalCents) / 100,
+      valid: !overLimit && !firstError,
+      message: overLimit
+        ? "La suma de participaciones supera el 100%."
+        : firstError ?? null,
+    };
+  }, [collabRows, collabEnabled, user]);
+
+  const updateRow = (id: string, patch: Partial<CollabRow>) =>
+    setCollabRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const removeRow = (id: string) => setCollabRows((rows) => rows.filter((r) => r.id !== id));
+  const addRow = () =>
+    setCollabRows((rows) => (rows.length >= MAX_COLLABORATORS ? rows : [...rows, newRow()]));
 
   // ✨ EFECTO DE SINCRONIZACIÓN: Desbloquea el botón cuando llega el reporte
   useEffect(() => {
@@ -97,6 +177,13 @@ export function IPFSUploadForm({
       setError("La wallet aún no está lista. Espera unos segundos e intenta de nuevo.");
       return;
     }
+    if (!collab.valid) {
+      // Marca todas las filas como tocadas para que se vean los errores.
+      setCollabRows((rows) => rows.map((r) => ({ ...r, touched: true })));
+      setError(collab.message ?? "Revisa los co-autores antes de continuar.");
+      return;
+    }
+    const collabList = collabEnabled ? collab.list : [];
     setError(null);
     const lh = LighthouseService.getInstance();
 
@@ -147,9 +234,11 @@ export function IPFSUploadForm({
         audioResult.encrypted,
         audioFile.type || "audio/mpeg",
         mbInfo,
-        artworkCid
+        artworkCid,
+        collabList
       );
       setMetadataCid(mCid);
+      setSavedCollaborators(collabList);
       console.log("✅ Metadata subida:", mCid);
 
       lh.saveUploadRecord({
@@ -161,6 +250,7 @@ export function IPFSUploadForm({
         encrypted: audioResult.encrypted,
         uploadedAt: Date.now(),
         ownerAddress,
+        collaborators: collabList.length > 0 ? collabList : undefined,
       });
 
       setStage("done");
@@ -184,6 +274,8 @@ export function IPFSUploadForm({
     }
     setCoverArtFile(null);
     setCoverArtPreview(null);
+    setCollabRows([]);
+    setSavedCollaborators([]);
   };
 
   if (isDone && metadataCid) {
@@ -206,6 +298,48 @@ export function IPFSUploadForm({
             <p className="font-mono text-[10px] text-zinc-500">Audio: {audioCid.slice(0, 20)}...</p>
             <p className="font-mono text-[10px] text-emerald-500">Certificado: {metadataCid.slice(0, 20)}...</p>
           </div>
+
+          {savedCollaborators.length > 0 && (
+            <div className="w-full rounded-2xl border border-violet/30 bg-violet-glow p-4 text-left">
+              <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <Users className="h-4 w-4 text-violet" />
+                <p className="font-mono text-xs font-bold uppercase text-violet">Créditos & Co-Autores</p>
+                <span className="font-mono text-[9px] text-zinc-500">(Powered by Privy)</span>
+              </div>
+
+              <ul className="space-y-1.5">
+                {savedCollaborators.map((c) => (
+                  <li
+                    key={c.email}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-surface-border bg-black/20 px-3 py-2"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Mail className="h-3 w-3 shrink-0 text-zinc-500" />
+                      <span className="truncate font-mono text-[11px] text-zinc-300">{c.email}</span>
+                    </span>
+                    <Badge variant="secondary" className="shrink-0 font-mono text-[9px]">
+                      {c.sharePercentage}%
+                    </Badge>
+                  </li>
+                ))}
+                <li className="flex items-center justify-between gap-3 px-3 py-1">
+                  <span className="font-mono text-[11px] text-zinc-500">Tú (creador)</span>
+                  <span className="font-mono text-[10px] text-emerald-500">
+                    {Math.max(
+                      0,
+                      Math.round((100 - savedCollaborators.reduce((s, c) => s + c.sharePercentage, 0)) * 100) / 100,
+                    )}
+                    %
+                  </span>
+                </li>
+              </ul>
+
+              <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
+                Al iniciar sesión por primera vez con su correo, Privy aprovisionará la Embedded Wallet de cada
+                colaborador (Just-In-Time) para reclamar su parte de este certificado.
+              </p>
+            </div>
+          )}
 
           {isHighRisk ? (
             <div className="w-full rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
@@ -398,6 +532,110 @@ export function IPFSUploadForm({
         </button>
       </div>
 
+      {collabEnabled && (
+        <div className="space-y-3 rounded-2xl border border-surface-border bg-surface-overlay/40 p-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-violet" />
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-300">
+                Co-autores & créditos
+              </span>
+              <Badge variant="secondary" className="text-[8px]">Privy</Badge>
+            </div>
+            <span className="font-mono text-[9px] text-zinc-600">Opcional</span>
+          </div>
+
+          <p className="text-[11px] leading-relaxed text-zinc-500">
+            Agrega a productores, beatmakers o co-autores por correo. No necesitan tener cuenta: Privy creará su
+            wallet embebida cuando inicien sesión con ese correo.
+          </p>
+
+          {collabRows.map((r) => {
+            const err = r.touched ? collab.rowErrors[r.id] : undefined;
+            return (
+              <div key={r.id} className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+                    <Input
+                      type="email"
+                      value={r.email}
+                      onChange={(e) => updateRow(r.id, { email: e.target.value })}
+                      onBlur={() => updateRow(r.id, { touched: true })}
+                      placeholder="productor@gmail.com"
+                      disabled={isUploading}
+                      className={`pl-9 ${err ? "border-red-500/40" : ""}`}
+                    />
+                  </div>
+                  <div className="relative w-24 shrink-0">
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      max={100}
+                      step={0.01}
+                      value={r.share}
+                      onChange={(e) => updateRow(r.id, { share: e.target.value })}
+                      onBlur={() => updateRow(r.id, { touched: true })}
+                      placeholder="20"
+                      disabled={isUploading}
+                      className={`pr-7 ${err ? "border-red-500/40" : ""}`}
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[10px] text-zinc-500">
+                      %
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeRow(r.id)}
+                    disabled={isUploading}
+                    className="h-10 w-10 shrink-0 text-zinc-500 hover:text-red-400"
+                    aria-label="Quitar colaborador"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+                {err && <p className="font-mono text-[9px] text-red-400">{err}</p>}
+              </div>
+            );
+          })}
+
+          {collabRows.length > 0 && (
+            <div className="flex items-center justify-between font-mono text-[10px]">
+              <span className={collab.overLimit ? "text-red-400" : "text-zinc-500"}>
+                Colaboradores: {collab.totalPct}%
+              </span>
+              <span className={collab.overLimit ? "text-red-400" : "text-emerald-500"}>
+                {collab.overLimit ? "Supera el 100%" : `Tú conservas: ${collab.creatorPct}%`}
+              </span>
+            </div>
+          )}
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={addRow}
+            disabled={isUploading || collabRows.length >= MAX_COLLABORATORS}
+            className="w-full"
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Agregar colaborador
+          </Button>
+
+          {collabRows.length > 0 && (
+            <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-zinc-600">
+              <Info className="mt-0.5 h-3 w-3 shrink-0" />
+              {EXPOSE_COLLABORATOR_EMAILS
+                ? "Los correos quedan escritos en la metadata pública de IPFS y no se pueden borrar después. Avisa a tus colaboradores."
+                : "En la metadata pública solo se guarda un hash de cada correo, no el correo en sí."}
+            </p>
+          )}
+        </div>
+      )}
+
       <AnimatePresence>
         {isUploading && (
           <motion.div
@@ -427,7 +665,7 @@ export function IPFSUploadForm({
 
       <Button
         onClick={handleSubmit}
-        disabled={isMetadataIncomplete || isUploading || (encrypt && !signMessage)}
+        disabled={isMetadataIncomplete || isUploading || (encrypt && !signMessage) || !collab.valid}
         className="w-full h-12"
         size="lg"
       >
@@ -444,6 +682,10 @@ export function IPFSUploadForm({
         <p className="text-center font-mono text-[9px] text-zinc-500">
           Completa título y artista para continuar
         </p>
+      )}
+
+      {!isUploading && !collab.valid && collab.message && (
+        <p className="text-center font-mono text-[9px] text-red-400">Co-autores: {collab.message}</p>
       )}
     </Card>
   );

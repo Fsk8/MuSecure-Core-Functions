@@ -6,8 +6,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
-import { usePrivy } from "@privy-io/react-auth";
+import { usePrivy, useIdentityToken } from "@privy-io/react-auth";
 import { useWallet } from "@/hooks/useWallet";
+import { resolveCollaborators } from "@/lib/resolveCollaborators"; // TEMPORAL (prueba Privy)
 import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
 import { LighthouseService } from "@/services/LighthouseService";
 import { getWorksByAuthor, getAllWorks, getStats, type IndexedWork, type IndexerStats } from "@/services/EnvioIndexerService";
@@ -116,6 +117,7 @@ async function fetchWorksFromRpc(authorAddress: string | null): Promise<WorkItem
 export function Dashboard() {
   const { authenticated, login } = usePrivy();
   const { address, signMessage, isReady } = useWallet();
+  const { identityToken } = useIdentityToken(); // TEMPORAL (prueba Privy)
   
   const [works, setWorks] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -274,6 +276,37 @@ export function Dashboard() {
 
   return (
     <div className="space-y-8 pt-4 pb-12 px-4 sm:px-0">
+      {/* ───── TEMPORAL: prueba de /api/resolve-collaborators. BORRAR este bloque después. ───── */}
+      <div className="rounded-2xl border border-dashed border-amber-500/40 bg-amber-500/5 p-4">
+        <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-400">
+          Prueba temporal — Privy
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={async () => {
+            const email = window.prompt(
+              "Correo secundario a probar (uno que NUNCA haya entrado a la app):",
+            );
+            if (!email) return;
+            try {
+              const result = await resolveCollaborators(identityToken, [email.trim()]);
+              console.log("RESULTADO:", result);
+              alert(JSON.stringify(result, null, 2));
+            } catch (e) {
+              console.error("ERROR:", e);
+              alert("ERROR: " + (e as Error).message);
+            }
+          }}
+        >
+          TEST resolve
+        </Button>
+        <p className="mt-3 break-all font-mono text-[10px] text-zinc-400">
+          Mi wallet: {address ?? "…"}
+        </p>
+      </div>
+      {/* ───── FIN DEL BLOQUE TEMPORAL ───── */}
+
       <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-display text-2xl font-bold text-white tracking-tight">
