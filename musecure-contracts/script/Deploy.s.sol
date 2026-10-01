@@ -4,19 +4,13 @@ pragma solidity ^0.8.24;
 import {Script, console} from "forge-std/Script.sol";
 import {MuSecureRegistry} from "../src/MuSecureRegistry.sol";
 import {MuSecureAsset}    from "../src/MuSecureAsset.sol";
+import {MuSecureCredits}  from "../src/MuSecureCredits.sol";
 
-/// @notice Script de despliegue para MuSecure en Arbitrum.
+/// @notice Script de despliegue para MuSecure.
 ///
-/// Uso (testnet):
+/// Uso (testnet/mainnet):
 ///   forge script script/Deploy.s.sol \
-///     --rpc-url arbitrum_sepolia \
-///     --broadcast \
-///     --verify \
-///     -vvvv
-///
-/// Uso (mainnet):
-///   forge script script/Deploy.s.sol \
-///     --rpc-url arbitrum_one \
+///     --rpc-url <YOUR_RPC_URL> \
 ///     --broadcast \
 ///     --verify \
 ///     -vvvv
@@ -46,17 +40,24 @@ contract Deploy is Script {
         MuSecureRegistry registry = new MuSecureRegistry(deployer, scoreSigner);
         console.log("MuSecureRegistry:", address(registry));
 
-        // ── 3. Conectar contratos ──────────────────────────────────────────
+        // ── 3. Deploy MuSecureCredits (Pasa registry como argumento) ──────
+        // Se asume que el constructor recibe (address initialOwner, address registryAddress) 
+        // o directamente (address registryAddress). Ajusta si tu owner inicial se pasa primero.
+        MuSecureCredits credits = new MuSecureCredits(address(registry));
+        console.log("MuSecureCredits: ", address(credits));
+
+        // ── 4. Conectar contratos ──────────────────────────────────────────
         registry.setAssetContract(address(asset));
         asset.setRegistryContract(address(registry));
         console.log("Contratos conectados");
 
         vm.stopBroadcast();
 
-        // ── 4. Resumen para el .env del frontend ───────────────────────────
+        // ── 5. Resumen para el .env del frontend ───────────────────────────
         console.log("\n--- Copia al .env del frontend ---");
         console.log("VITE_REGISTRY_ADDRESS=", address(registry));
         console.log("VITE_ASSET_ADDRESS=   ", address(asset));
-        console.log("VITE_ARBITRUM_CHAIN_ID=42161");
+        console.log("VITE_CREDITS_ADDRESS= ", address(credits));
+        console.log("VITE_CHAIN_ID=        ", block.chainid);
     }
 }
