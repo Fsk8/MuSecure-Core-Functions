@@ -31,7 +31,14 @@ function getClient() {
   if (client) return client;
   const appId = process.env.PRIVY_APP_ID;
   const appSecret = process.env.PRIVY_APP_SECRET;
-  if (!appId || !appSecret) throw new Error("Faltan PRIVY_APP_ID / PRIVY_APP_SECRET");
+  const missing = [];
+  if (!appId) missing.push("PRIVY_APP_ID");
+  if (!appSecret) missing.push("PRIVY_APP_SECRET");
+  if (missing.length > 0) {
+    const e = new Error(`Faltan variables de entorno: ${missing.join(", ")}`);
+    e.missing = missing; // solo nombres, nunca valores
+    throw e;
+  }
   client = new PrivyClient({ appId, appSecret });
   return client;
 }
@@ -121,7 +128,14 @@ export default async function handler(req, res) {
     privy = getClient();
   } catch (err) {
     console.error("[resolve-collaborators]", err.message);
-    res.status(500).json({ error: "Servidor mal configurado" });
+    // VERCEL_ENV = "production" | "preview" | "development" (con `vercel dev`).
+    // Revela el error típico: variables definidas solo para Production y probando en Preview.
+    const where = process.env.VERCEL_ENV ?? "sin VERCEL_ENV (¿no es Vercel?)";
+    res.status(500).json({
+      error: err.missing
+        ? `Servidor mal configurado: falta ${err.missing.join(" y ")} (entorno: ${where})`
+        : "Servidor mal configurado",
+    });
     return;
   }
 
