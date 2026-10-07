@@ -24,3 +24,8 @@ chains:
           - event: WorkRegistered(address indexed author, bytes32 indexed fingerprintHash, string ipfsCid, uint256 authenticityScore, uint8 riskLevel, uint256 tokenId, uint256 timestamp)
           - event: WorkBlocked(address indexed author, bytes32 indexed fingerprintHash, uint256 authenticityScore, uint256 timestamp)
           - event: ScoreSignerUpdated(address indexed oldSigner, address indexed newSigner)
+      - name: MuSecureCredits
+        address:
+          - "0x495e9fdeDe572ee6F5cAfBED5818a080d400Db58"
+        events:
+          - event: CollaboratorCredited(bytes32 indexed fingerprintHash, address indexed author, address indexed collaborator, uint16 bps)

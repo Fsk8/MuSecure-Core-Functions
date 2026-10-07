@@ -2,6 +2,7 @@ type Author {
   id: ID! # wallet address
   works: [Work!]! @derivedFrom(field: "author")
   certificates: [Certificate!]! @derivedFrom(field: "owner")
+  credits: [Credit!]! @derivedFrom(field: "collaborator")
 }
 
 type Work {
@@ -15,6 +16,7 @@ type Work {
   txHash: String!
   author: Author!
   certificate: Certificate
+  credits: [Credit!]! @derivedFrom(field: "work")
 }
 
 type Certificate {
@@ -33,5 +35,16 @@ type WorkBlockedEvent {
   fingerprintHash: String!
   authenticityScore: BigInt!
   blockedAt: BigInt!
+  txHash: String!
+}
+
+type Credit {
+  id: ID! # fingerprintHash-collaborator
+  work: Work! # id de Work = fingerprintHash
+  fingerprintHash: String!
+  author: Author! # quien acreditó (autor de la obra)
+  collaborator: Author! # wallet acreditada (Embedded Wallet de Privy)
+  bps: Int! # puntos base: 1 = 0,01 %
+  creditedAt: BigInt! # block timestamp
   txHash: String!
 }

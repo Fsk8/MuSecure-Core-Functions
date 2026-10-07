@@ -160,3 +160,53 @@ export async function getStats(): Promise<IndexerStats> {
     riskBreakdown,
   };
 }
+/* ───────────────────────── Créditos de co-autoría (MuSecureCredits) ───────────────────────── */
+
+export interface IndexedCredit {
+  id: string;
+  /** Puntos base: 1 = 0,01 %. */
+  bps: number;
+  creditedAt: string;
+  txHash: string;
+  author: { id: string };
+  collaborator: { id: string };
+  /** `credits` = todos los créditos de esa obra (para calcular el reparto). */
+  work: IndexedWork & { credits: { bps: number }[] };
+}
+
+const CREDIT_FIELDS = `
+  id
+  bps
+  creditedAt
+  txHash
+  author { id }
+  collaborator { id }
+  work { ${WORK_FIELDS} credits { bps } }
+`;
+
+/** Créditos recibidos por una wallet (comparación case-insensitive con _ilike). */
+export async function getCreditsByCollaborator(address: string): Promise<IndexedCredit[]> {
+  const query = `
+    query GetCredits($addr: String!) {
+      Credit(where: { collaborator_id: { _ilike: $addr } }, order_by: { creditedAt: desc }) {
+        ${CREDIT_FIELDS}
+      }
+    }
+  `;
+  const data = await graphqlRequest<{ Credit: IndexedCredit[] }>(query, { addr: address });
+  const target = address.toLowerCase();
+  return data.Credit.filter((c) => c.collaborator.id.toLowerCase() === target);
+}
+
+/** Créditos declarados sobre una obra (por fingerprintHash). */
+export async function getCreditsByWork(fingerprintHash: string): Promise<IndexedCredit[]> {
+  const query = `
+    query GetWorkCredits($fp: String!) {
+      Credit(where: { fingerprintHash: { _eq: $fp } }) {
+        ${CREDIT_FIELDS}
+      }
+    }
+  `;
+  const data = await graphqlRequest<{ Credit: IndexedCredit[] }>(query, { fp: fingerprintHash });
+  return data.Credit;
+}

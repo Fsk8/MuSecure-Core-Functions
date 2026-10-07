@@ -15,6 +15,7 @@ import {
   type CollaboratorInput,
 } from "@/services/LighthouseService";
 import { RegisterWorkButton } from "@/components/RegisterWorkButton";
+import { CreditCollaboratorsPanel } from "@/components/CreditCollaboratorsPanel";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -92,6 +93,8 @@ export function IPFSUploadForm({
   const [collabRows, setCollabRows] = useState<CollabRow[]>([]);
   /** Copia congelada al subir, para la pantalla de éxito (el formulario ya no manda). */
   const [savedCollaborators, setSavedCollaborators] = useState<CollaboratorInput[]>([]);
+  /** true cuando registerWork ya confirmó: recién entonces se puede acreditar on-chain. */
+  const [workRegistered, setWorkRegistered] = useState(false);
 
   // Obras de alto riesgo no se pueden registrar → no hay certificado que repartir.
   const collabEnabled = !isHighRisk;
@@ -276,6 +279,7 @@ export function IPFSUploadForm({
     setCoverArtPreview(null);
     setCollabRows([]);
     setSavedCollaborators([]);
+    setWorkRegistered(false);
   };
 
   if (isDone && metadataCid) {
@@ -335,8 +339,8 @@ export function IPFSUploadForm({
               </ul>
 
               <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
-                Al iniciar sesión por primera vez con su correo, Privy aprovisionará la Embedded Wallet de cada
-                colaborador (Just-In-Time) para reclamar su parte de este certificado.
+                Tras registrar la obra podrás acreditarlos on-chain: Privy crea la Embedded Wallet de cada
+                colaborador con su correo y, al iniciar sesión, verán esta obra en Mis Créditos.
               </p>
             </div>
           )}
@@ -359,6 +363,16 @@ export function IPFSUploadForm({
                 authenticityScore={authenticityScore}
                 soulbound={isSoulbound}
                 title={title}
+                onSuccess={() => setWorkRegistered(true)}
+              />
+            </div>
+          )}
+
+          {!isHighRisk && workRegistered && savedCollaborators.length > 0 && (
+            <div className="w-full">
+              <CreditCollaboratorsPanel
+                fingerprintHash={`0x${fingerprint.sha256}`}
+                collaborators={savedCollaborators}
               />
             </div>
           )}
