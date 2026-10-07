@@ -1,0 +1,28 @@
+# ── Variables de Entorno y Claves Privadas (¡CRÍTICO!) ──
+.env
+.env.*
+!.env.example
+
+# ── Módulos y Dependencias ──
+node_modules/
+lib/
+/pnpm-lock.yaml
+/yarn.lock
+
+# ── Compilados y Build Outputs (Hardhat / Foundry) ──
+artifacts/
+cache/
+out/
+broadcast/
+typechain/
+typechain-types/
+
+# ── Reportes y Logs ──
+coverage/
+coverage.json
+*.log
+
+# ── Sistema Operativo y Editor ──
+.DS_Store
+.vscode/
+.idea/
