@@ -41,6 +41,7 @@ import {
   Music, ExternalLink, CheckCircle2, Sparkles, Headphones, Lock, Globe,
   RefreshCw, Search, X, User, Shield, Users, BarChart3, Loader2,
 } from "lucide-react";
+import { CHAIN, txUrl } from "@/lib/chain";
 
 const POLL_MS = 15_000;
 const RISK_LABEL = ["Bajo Riesgo", "Riesgo Medio", "Alto Riesgo", "Bloqueado"];
@@ -752,7 +753,7 @@ export const Explorer = () => {
             Explorar Obras
           </h2>
           <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-emerald-500/60">
-            Arbitrum Sepolia Ledger · ⚡ Indexed by Envio
+            {CHAIN.name} Ledger · ⚡ Indexed by Envio
           </p>
         </div>
 
@@ -1092,7 +1093,7 @@ export const Explorer = () => {
 
                       {isOnchain && work.txHash && (
                         <a
-                          href={`https://sepolia.arbiscan.io/tx/${work.txHash}`}
+                          href={txUrl(work.txHash)}
                           target="_blank"
                           rel="noreferrer"
                           className="flex items-center justify-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-700 no-underline transition-colors hover:text-emerald-500"

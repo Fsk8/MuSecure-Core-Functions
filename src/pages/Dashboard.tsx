@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { motion, AnimatePresence } from "motion/react";
 import { RefreshCw, ExternalLink, Shield, Music, Headphones, Globe, User, Users, BarChart3, Search, X } from "lucide-react";
 import type { MuSecureMetadata } from "@/types/ipfs";
+import { txUrl } from "@/lib/chain";
 
 const REGISTRY_ABI = [
   "event WorkRegistered(address indexed author, bytes32 indexed fingerprintHash, string ipfsCid, uint256 authenticityScore, uint8 riskLevel, uint256 tokenId, uint256 timestamp)",
@@ -543,7 +544,7 @@ export function Dashboard() {
                         </div>
                       )
                     )}
-                    <a href={`https://sepolia.arbiscan.io/tx/${item.txHash}`} target="_blank" className="flex items-center justify-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-700 hover:text-emerald-500 transition-colors no-underline">
+                    <a href={txUrl(item.txHash)} target="_blank" className="flex items-center justify-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-700 hover:text-emerald-500 transition-colors no-underline">
                       Blockchain Proof <ExternalLink className="h-2 w-2" />
                     </a>
                   </div>

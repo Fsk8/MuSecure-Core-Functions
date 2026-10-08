@@ -29,6 +29,7 @@ import {
   Mail, Wallet, RefreshCw, Headphones, Lock, ExternalLink, CheckCircle2,
   Loader2, User, Users, Shield,
 } from "lucide-react";
+import { txUrl } from "@/lib/chain";
 
 const shortAddress = (a: string) => `${a.slice(0, 6)}...${a.slice(-4)}`;
 const pct = (n: number) => Number(n.toFixed(2));
@@ -176,7 +177,7 @@ function CreditCard({ entry, index }: { entry: CreditEntry; index: number }) {
           )}
 
           <a
-            href={`https://sepolia.arbiscan.io/tx/${work.txHash}`}
+            href={txUrl(work.txHash)}
             target="_blank"
             rel="noreferrer"
             className="flex items-center justify-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-700 no-underline transition-colors hover:text-emerald-500"
@@ -184,7 +185,7 @@ function CreditCard({ entry, index }: { entry: CreditEntry; index: number }) {
             Registro de la obra <ExternalLink className="h-2 w-2" />
           </a>
           <a
-            href={`https://sepolia.arbiscan.io/tx/${entry.creditTxHash}`}
+            href={txUrl(entry.creditTxHash)}
             target="_blank"
             rel="noreferrer"
             className="flex items-center justify-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-700 no-underline transition-colors hover:text-violet-400"

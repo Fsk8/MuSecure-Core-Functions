@@ -16,6 +16,7 @@
 import { useState, useCallback } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "@/hooks/useWallet";
+import { CHAIN, RPC_URL } from "@/lib/chain";
 
 export type RegisterStep =
   | "idle"
@@ -50,7 +51,7 @@ const STEP_MESSAGES: Record<RegisterStep, string> = {
   "checking-duplicate":   "Verificando registro previo...",
   "requesting-signature": "Solicitando firma al backend...",
   "waiting-wallet":       "Confirma en tu wallet...",
-  "confirming":           "Confirmando en Arbitrum Sepolia...",
+  "confirming":           `Confirmando en ${CHAIN.name}...`,
   "done":                 "¡Registro exitoso!",
   "error":                "Error en el proceso",
 };
@@ -70,7 +71,7 @@ export function useRegisterWork() {
   }): Promise<RegisterResult> => {
     const registryAddress = import.meta.env.VITE_REGISTRY_ADDRESS as string;
     const backendUrl = (import.meta.env.VITE_BACKEND_URL as string) ?? "";
-    const rpcUrl = (import.meta.env.VITE_ARBITRUM_RPC as string) ?? "https://sepolia-rollup.arbitrum.io/rpc";
+    const rpcUrl = RPC_URL;
 
     try {
       if (!registryAddress) throw new Error("Falta VITE_REGISTRY_ADDRESS en .env");
@@ -95,8 +96,10 @@ export function useRegisterWork() {
         body: JSON.stringify({
           fingerprintHash: cleanHash,
           score: input.authenticityScore,
+          ipfsCid: input.ipfsCid,
+          soulbound: input.soulbound,
           userAddress: address,
-          chainId: 421614,
+          chainId: CHAIN.id,
         }),
       });
 
@@ -117,8 +120,15 @@ export function useRegisterWork() {
 
       // getNetwork y getFeeData desde el RPC público — no pasa por rpc.privy.systems
       const network = await rpcProvider.getNetwork();
-      if (network.chainId.toString() !== "421614") {
-        throw new Error("Cambia tu wallet a Arbitrum Sepolia (chainId: 421614).");
+      if (network.chainId.toString() !== String(CHAIN.id)) {
+        throw new Error(`El RPC configurado no es ${CHAIN.name} (chainId: ${CHAIN.id}).`);
+      }
+
+      // La wallet embebida/externa debe estar en la red correcta antes de enviar.
+      try {
+        await privyProvider.send("wallet_switchEthereumChain", [{ chainId: ethers.toBeHex(CHAIN.id) }]);
+      } catch (e) {
+        console.warn("[RegisterWork] switchChain falló (se continúa):", e);
       }
 
       const feeData = await rpcProvider.getFeeData();
@@ -137,13 +147,26 @@ export function useRegisterWork() {
         sigData.signature,
       ]);
 
+      // En Monad el cobro se calcula sobre el gas LIMIT (no sobre el gas usado),
+      // así que un límite fijo y holgado (600k) se paga completo. Se estima y se
+      // aplica un margen; 600k queda solo como respaldo si la estimación falla.
+      let gasLimit = 600_000n;
+      try {
+        const est = await rpcProvider.estimateGas({ from: address, to: registryAddress, data: calldata });
+        gasLimit = (est * 130n) / 100n;
+      } catch (e: any) {
+        if (e?.code === "CALL_EXCEPTION" || /revert/i.test(String(e?.message))) {
+          throw new Error(`El contrato rechazó la transacción: ${e?.reason ?? e?.shortMessage ?? "revert"}`);
+        }
+      }
+
       // MEJORA: Usamos ethers.toBeHex() para garantizar que los valores hex 
       // sean estrictamente válidos para el protocolo RPC.
       const txHash: string = await privyProvider.send("eth_sendTransaction", [{
         from: address,
         to: registryAddress,
         data: calldata,
-        gas: ethers.toBeHex(600000),
+        gas: ethers.toBeHex(gasLimit),
         maxFeePerGas: ethers.toBeHex(maxFeePerGas),
         maxPriorityFeePerGas: ethers.toBeHex(maxPriorityFeePerGas),
       }]);
@@ -178,7 +201,7 @@ export function useRegisterWork() {
       if (msg.toLowerCase().includes("user rejected") || msg.includes("4001")) {
         msg = "Transacción cancelada por el usuario.";
       } else if (msg.toLowerCase().includes("insufficient funds")) {
-        msg = "Fondos insuficientes para el gas. Pide ETH de prueba abajo.";
+        msg = `Fondos insuficientes para el gas. Pide ${CHAIN.symbol} de prueba abajo.`;
       } else if (msg.includes("recovery") || msg.includes("Recovery")) {
         // Si aparece este error, es un bug de compatibilidad de Privy
         msg = "Error de wallet. Intenta cerrar sesión y volver a conectar.";

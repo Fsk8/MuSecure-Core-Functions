@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "motion/react";
 import { Users, Mail, Loader2, CheckCircle2, ExternalLink, AlertTriangle } from "lucide-react";
+import { txUrl } from "@/lib/chain";
 
 interface Props {
   /** Misma huella con la que se registró la obra (0x + 64 hex). */
@@ -51,7 +52,7 @@ export function CreditCollaboratorsPanel({ fingerprintHash, collaborators }: Pro
         </p>
         {state.txHash && (
           <a
-            href={`https://sepolia.arbiscan.io/tx/${state.txHash}`}
+            href={txUrl(state.txHash)}
             target="_blank"
             rel="noreferrer"
             className="mt-3 inline-flex items-center gap-1.5 font-mono text-[10px] text-zinc-500 no-underline transition-colors hover:text-violet-400"

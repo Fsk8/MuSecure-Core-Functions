@@ -2,22 +2,24 @@
  * MuSecure – api/airdrop-gas.js
  * Serverless function (Vercel API Route)
  *
- * Envía 0.002 ETH de Sepolia al nuevo usuario.
+ * Envía una pequeña cantidad de moneda nativa de testnet (MON en Monad) al nuevo usuario.
  * Protecciones:
- *  1. Verifica que el balance del usuario sea < 0.001 ETH antes de enviar
+ *  1. Verifica que el balance del usuario sea < AIRDROP_MIN_BALANCE antes de enviar
  *  2. Set en memoria para evitar doble envío en la misma instancia
  *  3. Rate limit: solo 1 request por address cada 24h (via header timestamp)
  *
  * Variables de entorno en Vercel:
  *   TREASURY_PRIVATE_KEY  — clave privada de tu wallet tesorería
- *   ARBITRUM_SEPOLIA_RPC  — RPC de Arbitrum Sepolia (opcional, tiene default)
+ *   RPC_URL               — RPC de la red (opcional; default Monad Testnet)
+ *   AIRDROP_AMOUNT / AIRDROP_MIN_BALANCE — opcionales (en MON)
  */
 
 import { ethers } from "ethers";
 
-const AIRDROP_AMOUNT = "0.002"; // ETH
-const MIN_BALANCE    = "0.001"; // No enviar si ya tiene más de esto
-const RPC = process.env.ARBITRUM_SEPOLIA_RPC ?? "https://sepolia-rollup.arbitrum.io/rpc";
+// Monad cobra por gas LIMIT; 0.5 MON cubre varias txs. Ajustable por env sin redeploy de código.
+const AIRDROP_AMOUNT = process.env.AIRDROP_AMOUNT ?? "0.5";
+const MIN_BALANCE    = process.env.AIRDROP_MIN_BALANCE ?? "0.2"; // No enviar si ya tiene más de esto
+const RPC = process.env.RPC_URL ?? process.env.ARBITRUM_SEPOLIA_RPC ?? "https://testnet-rpc.monad.xyz";
 
 // Set en memoria — evita doble fondeo en la misma instancia serverless
 // Para persistencia real usa una DB (Redis, Vercel KV, etc.)
@@ -70,7 +72,7 @@ export default async function handler(req, res) {
       throw new Error("Fondos insuficientes en la tesorería");
     }
 
-    // ── Enviar ETH ────────────────────────────────────────────────────────
+    // ── Enviar moneda nativa ────────────────────────────────────────────────────────
     const tx = await treasury.sendTransaction({
       to: checksumAddr,
       value: airdropAmount,
@@ -80,7 +82,7 @@ export default async function handler(req, res) {
     // La tx ya está en mempool
     funded.add(checksumAddr);
 
-    console.log(`[Airdrop] ${AIRDROP_AMOUNT} ETH → ${checksumAddr} | tx: ${tx.hash}`);
+    console.log(`[Airdrop] ${AIRDROP_AMOUNT} → ${checksumAddr} | tx: ${tx.hash}`);
 
     return res.status(200).json({
       success: true,

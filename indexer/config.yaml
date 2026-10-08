@@ -7,8 +7,8 @@ field_selection:
     - hash
 
 chains:
-  - id: 421614
-    start_block: 0
+  - id: 10143
+    start_block: 69323359
     contracts:
       - name: MuSecureAsset
         address:
@@ -26,6 +26,6 @@ chains:
           - event: ScoreSignerUpdated(address indexed oldSigner, address indexed newSigner)
       - name: MuSecureCredits
         address:
-          - "0x495e9fdeDe572ee6F5cAfBED5818a080d400Db58"
+          - "0xadE430FE5D6561180FF3bBDD82C93005D1b467E6"
         events:
           - event: CollaboratorCredited(bytes32 indexed fingerprintHash, address indexed author, address indexed collaborator, uint16 bps)

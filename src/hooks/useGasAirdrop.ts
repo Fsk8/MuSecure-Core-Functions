@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { CHAIN } from "@/lib/chain";
 
 type AirdropStatus = "idle" | "sending" | "done" | "skipped" | "error";
 
@@ -8,7 +9,7 @@ export function useGasAirdrop(address: string | null, isNewUser?: boolean) {
 
   const requestManualAirdrop = useCallback(async (targetAddress: string) => {
     setStatus("sending");
-    setMessage("Fondeando tu cuenta con ETH de testnet...");
+    setMessage(`Fondeando tu cuenta con ${CHAIN.symbol} de testnet...`);
 
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL as string ?? "";
@@ -32,7 +33,7 @@ export function useGasAirdrop(address: string | null, isNewUser?: boolean) {
       }
 
       setStatus("done");
-      setMessage(`✅ Recibiste ${data.amount} ETH para gas`);
+      setMessage(`✅ Recibiste ${data.amount} ${CHAIN.symbol} para gas`);
       setTimeout(() => setMessage(null), 5000);
     } catch (e) {
       setStatus("error");

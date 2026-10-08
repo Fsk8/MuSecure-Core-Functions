@@ -18,6 +18,7 @@ import { ethers } from "ethers";
 import { useIdentityToken } from "@privy-io/react-auth";
 import { useWallet } from "@/hooks/useWallet";
 import { resolveCollaborators } from "@/lib/resolveCollaborators";
+import { CHAIN, RPC_URL } from "@/lib/chain";
 
 export type CreditStep =
   | "idle"
@@ -57,7 +58,7 @@ const STEP_MESSAGES: Record<CreditStep, string> = {
   resolving: "Preparando las wallets de tus colaboradores...",
   checking: "Verificando créditos previos...",
   "waiting-wallet": "Confirmando en tu wallet...",
-  confirming: "Confirmando en Arbitrum Sepolia...",
+  confirming: `Confirmando en ${CHAIN.name}...`,
   done: "¡Co-autores acreditados on-chain!",
   error: "Error en el proceso",
 };
@@ -73,8 +74,7 @@ export function useCreditCollaborators() {
   const creditCollaborators = useCallback(
     async (input: CreditInput): Promise<CreditResult> => {
       const creditsAddress = import.meta.env.VITE_CREDITS_ADDRESS as string;
-      const rpcUrl =
-        (import.meta.env.VITE_ARBITRUM_RPC as string) ?? "https://sepolia-rollup.arbitrum.io/rpc";
+      const rpcUrl = RPC_URL;
 
       try {
         if (!creditsAddress) throw new Error("Falta VITE_CREDITS_ADDRESS en .env");
@@ -124,7 +124,7 @@ export function useCreditCollaborators() {
         set("checking");
         const rpcProvider = new ethers.JsonRpcProvider(rpcUrl);
         const network = await rpcProvider.getNetwork();
-        if (network.chainId.toString() !== "421614") throw new Error("RPC en una red distinta a Arbitrum Sepolia.");
+        if (network.chainId.toString() !== String(CHAIN.id)) throw new Error(`RPC en una red distinta a ${CHAIN.name}.`);
 
         const read = new ethers.Contract(creditsAddress, CREDITS_ABI, rpcProvider);
         if (await read.hasCredits(hash)) throw new Error("Esta obra ya tiene co-autores acreditados.");
@@ -161,6 +161,11 @@ export function useCreditCollaborators() {
 
         set("waiting-wallet");
         const privyProvider = await getProvider();
+        try {
+          await privyProvider.send("wallet_switchEthereumChain", [{ chainId: ethers.toBeHex(CHAIN.id) }]);
+        } catch (e) {
+          console.warn("[CreditCollaborators] switchChain falló (se continúa):", e);
+        }
         const txHash: string = await privyProvider.send("eth_sendTransaction", [
           {
             from: address,

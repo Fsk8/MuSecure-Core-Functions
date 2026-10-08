@@ -16,14 +16,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { fingerprintHash, score, userAddress } = req.body;
+    const { fingerprintHash, score, ipfsCid, soulbound, userAddress, chainId: bodyChainId } = req.body;
     
     // Validación básica de entrada para evitar errores 500 silenciosos
-    if (!fingerprintHash || !userAddress || score === undefined) {
-      return res.status(400).json({ error: 'Faltan parámetros en el body' });
+    if (!fingerprintHash || !userAddress || score === undefined || typeof ipfsCid !== 'string' || typeof soulbound !== 'boolean') {
+      return res.status(400).json({ error: 'Faltan parámetros en el body (fingerprintHash, score, ipfsCid, soulbound, userAddress)' });
     }
 
-    const chainId = 421614; // Arbitrum Sepolia
+    // CHAIN_ID (env del servidor) manda; el body es respaldo. El contrato valida con block.chainid.
+    // Monad Testnet = 10143, Arbitrum Sepolia = 421614.
+    const chainId = Number(process.env.CHAIN_ID ?? bodyChainId ?? 10143);
 
     // Verificación de la Variable de Entorno
     if (!process.env.SCORE_SIGNER_PRIVATE_KEY) {
@@ -34,9 +36,16 @@ export default async function handler(req, res) {
 
     // En ethers v6 (que es la que probablemente instalaste), 
     // se usa solidityPackedKeccak256 y getBytes
+    // Debe coincidir EXACTO con MuSecureRegistry._verifyScoreSignature:
+    // keccak256(abi.encodePacked(fingerprintHash, score, ipfsCid, soulbound, msg.sender, block.chainid, address(this)))
+    const registryAddress = process.env.REGISTRY_ADDRESS ?? process.env.VITE_REGISTRY_ADDRESS;
+    if (!registryAddress || !ethers.isAddress(registryAddress)) {
+      throw new Error("Falta REGISTRY_ADDRESS (o VITE_REGISTRY_ADDRESS) válida en el servidor");
+    }
+
     const messageHash = ethers.solidityPackedKeccak256(
-      ["bytes32", "uint256", "address", "uint256"],
-      [fingerprintHash, score, userAddress, chainId]
+      ["bytes32", "uint256", "string", "bool", "address", "uint256", "address"],
+      [fingerprintHash, score, ipfsCid, soulbound, userAddress, chainId, registryAddress]
     );
 
     const signature = await signerWallet.signMessage(ethers.getBytes(messageHash));

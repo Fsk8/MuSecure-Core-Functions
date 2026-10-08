@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "motion/react";
 import { CheckCircle2, XCircle, Shield, Loader2, ExternalLink, Droplets } from "lucide-react";
+import { CHAIN, txUrl } from "@/lib/chain";
 
 interface Props {
   fingerprint: string;
@@ -76,7 +77,7 @@ export function RegisterWorkButton({
                 {title || "Obra"} Protegida
               </h4>
               <p className="font-mono text-[11px] text-zinc-500">
-                Certificado registrado en Arbitrum Sepolia
+                Certificado registrado en {CHAIN.name}
               </p>
             </div>
             {state.txHash && (
@@ -84,9 +85,9 @@ export function RegisterWorkButton({
                 variant="outline"
                 size="sm"
                 className="h-8 rounded-full border-zinc-800 bg-zinc-900/50 px-4 text-[10px] font-medium text-zinc-400"
-                onClick={() => window.open(`https://sepolia.arbiscan.io/tx/${state.txHash}`, "_blank")}
+                onClick={() => window.open(txUrl(state.txHash), "_blank")}
               >
-                Ver en Arbiscan <ExternalLink className="ml-2 h-3 w-3" />
+                Ver en el explorador <ExternalLink className="ml-2 h-3 w-3" />
               </Button>
             )}
           </motion.div>
@@ -150,7 +151,7 @@ export function RegisterWorkButton({
                     ) : (
                       <Droplets className="mr-2 h-3 w-3" />
                     )}
-                    ¿Sin fondos? Pedir Gas de prueba
+                    ¿Sin fondos? Pedir {CHAIN.symbol} de prueba
                   </Button>
                   
                   {airdropMessage && (

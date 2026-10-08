@@ -1,5 +1,5 @@
 import { PrivyProvider } from "@privy-io/react-auth";
-import { arbitrumSepolia } from "viem/chains";
+import { viemChain } from "@/lib/chain";
 
 interface Props {
   children: React.ReactNode;
@@ -46,8 +46,8 @@ export function PrivyProviderWrapper({ children }: Props) {
           noPromptOnSignature: true,
         },
 
-        defaultChain: arbitrumSepolia,
-        supportedChains: [arbitrumSepolia],
+        defaultChain: viemChain,
+        supportedChains: [viemChain],
       }}
     >
       {children}

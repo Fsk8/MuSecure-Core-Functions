@@ -171,7 +171,7 @@ export function ArtistProfile({ address }: Props) {
                   </div>
 
                   <div className="mb-4">
-                    <WorkCover urls={w.coverUrl} className="h-40" />
+                    <WorkCover urls={w.coverUrls} className="h-40" />
                   </div>
 
                   <h3 className="truncate font-display text-base font-bold uppercase text-white">
