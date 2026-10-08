@@ -109,3 +109,45 @@ export async function fetchEarnings(address: string): Promise<EarningsSummary> {
     })),
   };
 }
+
+/* ─────────── Lecturas en bloque para catálogos (1 consulta, no 1 por tarjeta) ─────────── */
+
+const TTL_MS = 20_000;
+let listingsCache: { at: number; p: Promise<Map<string, bigint>> } | null = null;
+const licensesCache = new Map<string, { at: number; p: Promise<Set<string>> }>();
+
+/** Descarta la caché (llamar tras una tx propia). */
+export function invalidateLicenseCache() {
+  listingsCache = null;
+  licensesCache.clear();
+}
+
+/** hash(minúsculas) → precio, solo obras a la venta (price > 0). Lanza si Envio no responde. */
+export function getListings(): Promise<Map<string, bigint>> {
+  if (listingsCache && Date.now() - listingsCache.at < TTL_MS) return listingsCache.p;
+  const p = gql<{ LicenseListing: { fingerprintHash: string; price: string }[] }>(
+    `query { LicenseListing(where: { price: { _gt: "0" } }, limit: 5000) { fingerprintHash price } }`,
+    {},
+  ).then((d) => new Map(d.LicenseListing.map((l) => [l.fingerprintHash.toLowerCase(), BigInt(l.price)])));
+  p.catch(() => {
+    if (listingsCache?.p === p) listingsCache = null;
+  });
+  listingsCache = { at: Date.now(), p };
+  return p;
+}
+
+/** Hashes (minúsculas) de las obras que `buyer` ya licenció. */
+export function getMyLicenses(buyer: string): Promise<Set<string>> {
+  const key = buyer.toLowerCase();
+  const hit = licensesCache.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.p;
+  const p = gql<{ License: { fingerprintHash: string }[] }>(
+    `query($b: String!) { License(where: { buyer: { _eq: $b } }, limit: 5000) { fingerprintHash } }`,
+    { b: key },
+  ).then((d) => new Set(d.License.map((l) => l.fingerprintHash.toLowerCase())));
+  p.catch(() => licensesCache.delete(key));
+  licensesCache.set(key, { at: Date.now(), p });
+  return p;
+}
+
+export const isFingerprint = (h: unknown): h is string => typeof h === "string" && /^0x[0-9a-fA-F]{64}$/.test(h);

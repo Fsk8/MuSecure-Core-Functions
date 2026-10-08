@@ -11,6 +11,8 @@ import { exitArtistProfile } from "@/lib/Artistnavigation";
 import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
 import { WorkCover } from "@/components/WorkCover";
 import { CollaboratorsList } from "@/components/CollaboratorsList";
+import { LicenseControl } from "@/components/LicenseControl";
+import { addressUrl, txUrl } from "@/lib/chain";
 import { LighthouseService } from "@/services/LighthouseService";
 import { useWallet } from "@/hooks/useWallet";
 import { Card } from "@/components/ui/card";
@@ -103,12 +105,12 @@ export function ArtistProfile({ address }: Props) {
           </div>
 
           <a
-            href={`https://sepolia.arbiscan.io/address/${address}`}
+            href={addressUrl(address)}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-1.5 self-start rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2 font-mono text-[10px] text-zinc-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-colors no-underline sm:self-auto"
           >
-            Ver en Arbiscan <ExternalLink className="h-3 w-3" />
+            Ver en el explorer <ExternalLink className="h-3 w-3" />
           </a>
         </div>
 
@@ -193,6 +195,7 @@ export function ArtistProfile({ address }: Props) {
                   </div>
 
                   <div className="mt-auto space-y-3">
+                    <LicenseControl fingerprintHash={(w as any).fingerprintHash ?? (w as any).id} author={address} />
                     {w.isEncrypted ? (
                       !w.audioCid ? (
                         <div className="rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">
@@ -234,7 +237,7 @@ export function ArtistProfile({ address }: Props) {
                       </div>
                     )}
                     <a
-                      href={`https://sepolia.arbiscan.io/tx/${w.txHash}`}
+                      href={txUrl(w.txHash)}
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center justify-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-700 hover:text-emerald-500 transition-colors no-underline"

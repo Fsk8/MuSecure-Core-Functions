@@ -12,6 +12,7 @@ import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
 import { LighthouseService } from "@/services/LighthouseService";
 import { getWorksByAuthor, getAllWorks, getCreditsByCollaborator, getStats, type IndexedWork, type IndexedWorkCredit, type IndexerStats } from "@/services/EnvioIndexerService";
 import { CollaboratorsList } from "@/components/CollaboratorsList";
+import { LicenseControl } from "@/components/LicenseControl";
 import { goToArtistProfile } from "@/lib/Artistnavigation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +44,7 @@ const getRiskVariant = (level: number): "success" | "warning" | "danger" | "viol
 
 interface WorkItem {
   tokenId: number;
+  fingerprintHash?: string;
   metadataCid: string;
   audioCid: string;
   authenticityScore: number;
@@ -66,6 +68,7 @@ function cleanCid(raw: string): string {
 function indexedToWorkItem(w: IndexedWork): WorkItem {
   return {
     tokenId: Number(w.tokenId),
+    fingerprintHash: (w as any).fingerprintHash ?? (w as any).id,
     metadataCid: cleanCid(w.ipfsCid),
     audioCid: "",
     authenticityScore: Number(w.authenticityScore),
@@ -98,6 +101,7 @@ async function fetchWorksFromRpc(authorAddress: string | null): Promise<WorkItem
         const { author, ipfsCid, authenticityScore, riskLevel, tokenId, timestamp } = log.args;
         return {
           tokenId: Number(tokenId),
+          fingerprintHash: String(log.args.fingerprintHash),
           metadataCid: cleanCid(ipfsCid),
           audioCid: "",
           authenticityScore: Number(authenticityScore),
@@ -509,6 +513,7 @@ export function Dashboard() {
                   </div>
 
                   <div className="mt-auto space-y-4">
+                    <LicenseControl fingerprintHash={item.fingerprintHash} author={item.author} />
                     {!item.metaLoading && (
                       item.isEncrypted ? (
                         !item.audioCid ? (

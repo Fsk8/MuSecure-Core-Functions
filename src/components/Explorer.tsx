@@ -30,6 +30,7 @@ import {
 import { goToArtistProfile } from "@/lib/Artistnavigation";
 import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
 import { CollaboratorsList } from "@/components/CollaboratorsList";
+import { LicenseControl } from "@/components/LicenseControl";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallet } from "@/hooks/useWallet";
 import { Card } from "@/components/ui/card";
@@ -95,6 +96,8 @@ interface ExplorerWork {
   // ── Solo obras on-chain (Envio) ──
   tokenId?: number;
   author?: string;
+  /** fingerprintHash = Work.id en Envio (para licencias). */
+  fingerprintHash?: string;
   authenticityScore?: number;
   riskLevel?: number;
   txHash?: string;
@@ -145,6 +148,7 @@ function indexedToWork(w: IndexedWork): ExplorerWork {
     registeredAt: Number(w.registeredAt) * 1000,
     tokenId: Number(w.tokenId),
     author: w.author.id,
+    fingerprintHash: (w as any).fingerprintHash ?? (w as any).id,
     authenticityScore: Number(w.authenticityScore),
     riskLevel: Number(w.riskLevel),
     txHash: w.txHash,
@@ -1059,6 +1063,7 @@ export const Explorer = () => {
 
                     {/* Reproductor */}
                     <div className="mt-auto space-y-4">
+                      {isOnchain && <LicenseControl fingerprintHash={work.fingerprintHash} author={work.author} />}
                       {work.metaLoading ? (
                         <Skeleton className="h-14 w-full rounded-2xl" />
                       ) : work.isEncrypted ? (
