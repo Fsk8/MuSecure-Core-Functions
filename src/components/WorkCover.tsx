@@ -14,19 +14,23 @@ import { Headphones } from "lucide-react";
 const LOAD_TIMEOUT_MS = 8000;
 
 interface Props {
-  /** URLs candidatas, en orden de preferencia. Vacío → solo el ícono. */
-  urls?: string[];
+  /**
+   * URLs candidatas, en orden de preferencia. Vacío → solo el ícono.
+   * Acepta también un único string (o null) y lo normaliza a array.
+   */
+  urls?: string[] | string | null;
   /** Clases de tamaño del contenedor (alto). Por defecto h-40. */
   className?: string;
   tone?: "emerald" | "blue";
   fit?: "cover" | "contain";
 }
 
-export function WorkCover({ urls = [], className = "h-40", tone = "emerald", fit = "cover" }: Props) {
+export function WorkCover({ urls, className = "h-40", tone = "emerald", fit = "cover" }: Props) {
   const [idx, setIdx] = useState(0);
   const [loaded, setLoaded] = useState(false);
-  const urlsKey = urls.join("|");
-  const src = urls[idx];
+  const list: string[] = Array.isArray(urls) ? urls.filter(Boolean) : urls ? [urls] : [];
+  const urlsKey = list.join("|");
+  const src = list[idx];
 
   // Si cambia la lista de candidatas, se empieza de nuevo.
   useEffect(() => {
