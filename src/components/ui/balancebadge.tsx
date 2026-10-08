@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { motion } from "motion/react";
+import { CHAIN, RPC_URL } from "@/lib/chain";
 
 export function BalanceBadge({ address }: { address: string | null }) {
   const [balance, setBalance] = useState<string>("0.00");
@@ -8,9 +9,11 @@ export function BalanceBadge({ address }: { address: string | null }) {
   useEffect(() => {
     if (!address) return;
 
+    // Un solo provider por efecto (antes se creaba uno nuevo cada 10 s).
+    const provider = new ethers.JsonRpcProvider(RPC_URL, undefined, { staticNetwork: true });
+
     const fetchBalance = async () => {
       try {
-        const provider = new ethers.JsonRpcProvider("https://sepolia-rollup.arbitrum.io/rpc");
         const b = await provider.getBalance(address);
         // Formateamos a 4 decimales para que se vea pro
         const formatted = parseFloat(ethers.formatEther(b)).toFixed(4);
@@ -36,7 +39,7 @@ export function BalanceBadge({ address }: { address: string | null }) {
     >
       <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
       <span className="font-mono text-[11px] font-medium text-zinc-300">
-        {balance} ETH
+        {balance} {CHAIN.symbol}
       </span>
     </motion.div>
   );

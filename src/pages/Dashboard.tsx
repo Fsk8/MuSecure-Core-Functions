@@ -20,7 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { motion, AnimatePresence } from "motion/react";
 import { RefreshCw, ExternalLink, Shield, Music, Headphones, Globe, User, Users, BarChart3, Search, X } from "lucide-react";
 import type { MuSecureMetadata } from "@/types/ipfs";
-import { txUrl } from "@/lib/chain";
+import { CHAIN, RPC_URL, txUrl } from "@/lib/chain";
 
 const REGISTRY_ABI = [
   "event WorkRegistered(address indexed author, bytes32 indexed fingerprintHash, string ipfsCid, uint256 authenticityScore, uint8 riskLevel, uint256 tokenId, uint256 timestamp)",
@@ -28,7 +28,8 @@ const REGISTRY_ABI = [
 
 const RISK_LABEL = ["Bajo Riesgo", "Riesgo Medio", "Alto Riesgo", "Bloqueado"];
 
-const DEPLOY_BLOCK = 255365885; 
+// Bloque de despliegue del Registry en la red activa (Monad testnet: 69323359).
+const DEPLOY_BLOCK = Number(import.meta.env.VITE_DEPLOY_BLOCK ?? 69323359);
 
 const getRiskVariant = (level: number): "success" | "warning" | "danger" | "violet" | "secondary" => {
   switch (level) {
@@ -83,8 +84,7 @@ function indexedToWorkItem(w: IndexedWork): WorkItem {
 /** Fallback: lee eventos WorkRegistered directo del RPC (por si el indexer no responde). */
 async function fetchWorksFromRpc(authorAddress: string | null): Promise<WorkItem[]> {
   const RPC_ENDPOINTS = [
-    "https://sepolia-rollup.arbitrum.io/rpc",
-    import.meta.env.VITE_RPC_URL,
+    RPC_URL,
   ].filter(Boolean);
 
   for (const url of RPC_ENDPOINTS) {
@@ -297,7 +297,7 @@ export function Dashboard() {
             {showCollabs ? "Mis Colaboraciones" : showOnlyMine ? "Mis Protecciones" : "Explorar Obras"}
           </h2>
           <p className="font-mono text-[10px] uppercase tracking-widest text-emerald-500/60 mt-1">
-             Arbitrum Sepolia Ledger{dataSource === "envio" && " · ⚡ Indexed by Envio"}
+             {CHAIN.name} Ledger{dataSource === "envio" && " · ⚡ Indexed by Envio"}
           </p>
         </div>
 

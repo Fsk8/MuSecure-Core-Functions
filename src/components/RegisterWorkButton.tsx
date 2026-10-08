@@ -85,7 +85,7 @@ export function RegisterWorkButton({
                 variant="outline"
                 size="sm"
                 className="h-8 rounded-full border-zinc-800 bg-zinc-900/50 px-4 text-[10px] font-medium text-zinc-400"
-                onClick={() => window.open(txUrl(state.txHash), "_blank")}
+                onClick={() => window.open(txUrl(state.txHash!), "_blank")}
               >
                 Ver en el explorador <ExternalLink className="ml-2 h-3 w-3" />
               </Button>
