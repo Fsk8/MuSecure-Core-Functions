@@ -59,7 +59,7 @@ async function graphqlRequest<T>(query: string, variables?: Record<string, unkno
   return json.data as T;
 }
 
-const WORK_FIELDS = `
+const WORK_FIELDS_BASE = `
   id
   fingerprintHash
   ipfsCid
@@ -76,37 +76,66 @@ const WORK_FIELDS = `
     soulbound
     owner { id }
   }
+`;
+
+const WORK_CREDITS_FIELDS = `
   credits {
     bps
     collaborator { id }
   }
 `;
 
+const WORK_FIELDS = `${WORK_FIELDS_BASE}${WORK_CREDITS_FIELDS}`;
+
+/**
+ * Consulta obras pidiendo también sus créditos. Si el Envio al que apunta la app
+ * todavía corre con el esquema viejo (sin la entidad Credit), esa consulta falla con
+ * "field 'credits' not found": en ese caso se reintenta sin créditos para que las
+ * obras sigan viéndose (con credits = []) en vez de romper todas las vistas.
+ */
+async function queryWorks(
+  build: (fields: string) => string,
+  variables: Record<string, unknown>,
+): Promise<IndexedWork[]> {
+  try {
+    const data = await graphqlRequest<{ Work: IndexedWork[] }>(build(WORK_FIELDS), variables);
+    return data.Work;
+  } catch (e) {
+    if (!/credits?/i.test((e as Error).message)) throw e;
+    console.warn("[Envio] El indexador desplegado no tiene créditos todavía; se muestran obras sin co-autores.");
+    const data = await graphqlRequest<{ Work: Omit<IndexedWork, "credits">[] }>(build(WORK_FIELDS_BASE), variables);
+    return data.Work.map((w) => ({ ...w, credits: [] }));
+  }
+}
+
 /** Trae todas las obras indexadas de un autor (case-insensitive, filtrado en cliente). */
 export async function getWorksByAuthor(address: string): Promise<IndexedWork[]> {
-  const query = `
-    query GetWorks($limit: Int!) {
-      Work(limit: $limit, order_by: { registeredAt: desc }) {
-        ${WORK_FIELDS}
+  const works = await queryWorks(
+    (fields) => `
+      query GetWorks($limit: Int!) {
+        Work(limit: $limit, order_by: { registeredAt: desc }) {
+          ${fields}
+        }
       }
-    }
-  `;
-  const data = await graphqlRequest<{ Work: IndexedWork[] }>(query, { limit: 1000 });
+    `,
+    { limit: 1000 },
+  );
   const target = address.toLowerCase();
-  return data.Work.filter((w) => w.author.id.toLowerCase() === target);
+  return works.filter((w) => w.author.id.toLowerCase() === target);
 }
 
 /** Trae todas las obras indexadas (para una galería/dashboard general). */
 export async function getAllWorks(limit = 100): Promise<IndexedWork[]> {
-  const query = `
-    query GetAllWorks($limit: Int!) {
-      Work(limit: $limit, order_by: { registeredAt: desc }) {
-        ${WORK_FIELDS}
+  return queryWorks(
+    (fields) => `
+      query GetAllWorks($limit: Int!) {
+        Work(limit: $limit, order_by: { registeredAt: desc }) {
+          ${fields}
+        }
       }
-    }
-  `;
-  const data = await graphqlRequest<{ Work: IndexedWork[] }>(query, { limit });
-  return data.Work;
+    `,
+    { limit },
+  );
 }
 
 export interface IndexerStats {
