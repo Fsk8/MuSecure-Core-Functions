@@ -29,6 +29,7 @@ import {
 } from "@/services/EnvioIndexerService";
 import { goToArtistProfile } from "@/lib/Artistnavigation";
 import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
+import { CollaboratorsList } from "@/components/CollaboratorsList";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallet } from "@/hooks/useWallet";
 import { Card } from "@/components/ui/card";
@@ -78,7 +79,11 @@ interface MBInfo {
 
 /** onchain = indexada por Envio · mb = MusicBrainz Verified · ipfs = solo en IPFS */
 type Source = "onchain" | "mb" | "ipfs";
-type Filter = "all" | Source;
+type Filter = "all" | Source | "collab";
+
+/** ¿La wallet figura como co-autora de esta obra? */
+const isCollaboratorOn = (w: { credits?: { collaborator: { id: string } }[] }, addr?: string | null) =>
+  !!addr && !!w.credits?.some((c) => c.collaborator.id.toLowerCase() === addr.toLowerCase());
 
 interface ExplorerWork {
   key: string;
@@ -93,6 +98,8 @@ interface ExplorerWork {
   riskLevel?: number;
   txHash?: string;
   soulbound?: boolean;
+  /** Co-autores acreditados on-chain (MuSecureCredits). */
+  credits?: { bps: number; collaborator: { id: string } }[];
   // ── Resueltos desde la metadata IPFS ──
   title: string;
   artist: string;
@@ -141,6 +148,7 @@ function indexedToWork(w: IndexedWork): ExplorerWork {
     riskLevel: Number(w.riskLevel),
     txHash: w.txHash,
     soulbound: !!w.certificate?.soulbound,
+    credits: w.credits ?? [],
     title: `Obra #${Number(w.tokenId)}`,
     artist: "...",
     audioCid: "",
@@ -515,6 +523,7 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: "onchain", label: "On-chain" },
   { id: "mb", label: "MB Verified" },
   { id: "ipfs", label: "Solo IPFS" },
+  { id: "collab", label: "Mis colaboraciones" },
 ];
 
 /* ─────────────────────────── Explorer ─────────────────────────── */
@@ -586,6 +595,7 @@ export const Explorer = () => {
             registeredAt: f.registeredAt,
             txHash: f.txHash,
             soulbound: f.soulbound,
+            credits: f.credits,
           };
           if (old.metaFailed && manual) {
             return { ...old, ...onchain, metaLoading: true, metaFailed: false };
@@ -651,42 +661,42 @@ export const Explorer = () => {
     return candidates.filter((c) => !metaCids.has(c.metadataCid) && !audioCids.has(c.audioCid));
   }, [works, candidates]);
 
-  // On-chain sin audio vinculado (metadata antigua/inaccesible): ocultas por
-  // defecto, pero el chip "Sin audio" las muestra marcadas si se quiere auditar.
-  const [showBroken, setShowBroken] = useState(false);
-  const brokenOnchain = useMemo(
-    () => works.filter((w) => !w.metaLoading && !w.audioCid),
-    [works],
-  );
+  // On-chain sin audio vinculado (metadata antigua/inaccesible): no reproducibles → ocultas.
   const playableOnchain = useMemo(
     () => works.filter((w) => w.metaLoading || !!w.audioCid),
     [works],
   );
-  const hiddenCount = brokenOnchain.length;
+  const hiddenCount = works.length - playableOnchain.length;
 
-  const combined = useMemo(() => {
-    const base = showBroken ? works : playableOnchain;
-    return [...base, ...offchain].sort((a, b) => b.registeredAt - a.registeredAt);
-  }, [works, playableOnchain, offchain, showBroken]);
+  const combined = useMemo(
+    () => [...playableOnchain, ...offchain].sort((a, b) => b.registeredAt - a.registeredAt),
+    [playableOnchain, offchain],
+  );
 
   const counts = useMemo(() => {
-    const c: Record<Filter, number> = { all: combined.length, onchain: 0, mb: 0, ipfs: 0 };
-    for (const w of combined) c[w.source]++;
+    const c: Record<Filter, number> = { all: combined.length, onchain: 0, mb: 0, ipfs: 0, collab: 0 };
+    for (const w of combined) {
+      c[w.source]++;
+      if (isCollaboratorOn(w, address)) c.collab++;
+    }
     return c;
-  }, [combined]);
+  }, [combined, address]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return combined.filter((w) => {
-      if (filter !== "all" && w.source !== filter) return false;
+      if (filter === "collab") {
+        if (!isCollaboratorOn(w, address)) return false;
+      } else if (filter !== "all" && w.source !== filter) return false;
       if (!q) return true;
       return (
         w.title.toLowerCase().includes(q) ||
         w.artist.toLowerCase().includes(q) ||
-        (w.author ?? "").toLowerCase().includes(q)
+        (w.author ?? "").toLowerCase().includes(q) ||
+        (w.credits ?? []).some((c) => c.collaborator.id.toLowerCase().includes(q))
       );
     });
-  }, [combined, filter, query]);
+  }, [combined, filter, query, address]);
 
   /* ── Diagnóstico (solo dev): ¿por qué una obra está en un lado y no en el otro? ── */
   const diagSig = useRef("");
@@ -739,7 +749,7 @@ export const Explorer = () => {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-display text-2xl font-bold tracking-tight text-white">
-            Catalogo completo
+            Explorar Obras
           </h2>
           <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-emerald-500/60">
             Arbitrum Sepolia Ledger · ⚡ Indexed by Envio
@@ -843,19 +853,6 @@ export const Explorer = () => {
             <span className="ml-1 flex items-center gap-1.5 font-mono text-[10px] text-zinc-600">
               <Loader2 className="h-3 w-3 animate-spin" /> Buscando obras en IPFS…
             </span>
-          )}
-          {hiddenCount > 0 && (
-            <button
-              onClick={() => setShowBroken((v) => !v)}
-              title="Obras registradas on-chain cuya metadata no vincula ningún audio (formato antiguo o inaccesible)"
-              className={`rounded-full border px-3 py-1 font-mono text-[10px] transition-colors ${
-                showBroken
-                  ? "border-amber-500/50 bg-amber-500/10 text-amber-400"
-                  : "border-zinc-800 text-zinc-500 hover:text-white"
-              }`}
-            >
-              {showBroken ? "Ocultar" : "Mostrar"} sin audio <span className="text-zinc-600">{hiddenCount}</span>
-            </button>
           )}
         </div>
       </div>
@@ -1006,6 +1003,9 @@ export const Explorer = () => {
                       </button>
                     )}
 
+                    {/* Co-autores acreditados on-chain */}
+                    {isOnchain && <CollaboratorsList credits={work.credits} myAddress={address} />}
+
                     {/* Certificado on-chain (datos del indexador) */}
                     {isOnchain ? (
                       <div className="mb-4 mt-3 grid grid-cols-3 gap-2">
@@ -1060,12 +1060,6 @@ export const Explorer = () => {
                     <div className="mt-auto space-y-4">
                       {work.metaLoading ? (
                         <Skeleton className="h-14 w-full rounded-2xl" />
-                      ) : !work.audioCid ? (
-                        <div className="rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">
-                          <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
-                            Metadata antigua — audio no vinculado
-                          </p>
-                        </div>
                       ) : work.isEncrypted ? (
                         !authenticated ? (
                           <Button onClick={() => login()} className="w-full" size="lg">
@@ -1113,10 +1107,10 @@ export const Explorer = () => {
             })}
           </div>
 
-          {hiddenCount > 0 && !showBroken && !query && filter === "all" && (
+          {hiddenCount > 0 && !query && filter === "all" && (
             <p className="text-center font-mono text-[10px] text-zinc-600">
-              {hiddenCount} obra{hiddenCount !== 1 ? "s" : ""} on-chain con metadata sin audio vinculado — usa el chip
-              "Mostrar sin audio" arriba para verlas
+              {hiddenCount} obra{hiddenCount !== 1 ? "s" : ""} on-chain oculta{hiddenCount !== 1 ? "s" : ""} (su
+              metadata no vincula audio)
             </p>
           )}
         </>

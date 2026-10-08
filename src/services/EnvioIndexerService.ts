@@ -19,6 +19,13 @@ export interface IndexedCertificate {
   owner: { id: string };
 }
 
+/** Crédito de co-autoría resumido, anidado en cada obra. */
+export interface IndexedWorkCredit {
+  /** Puntos base: 1 = 0,01 %. */
+  bps: number;
+  collaborator: { id: string };
+}
+
 export interface IndexedWork {
   id: string;
   fingerprintHash: string;
@@ -30,6 +37,8 @@ export interface IndexedWork {
   txHash: string;
   author: { id: string };
   certificate: IndexedCertificate | null;
+  /** Co-autores acreditados on-chain (vacío si la obra no tiene). */
+  credits: IndexedWorkCredit[];
 }
 
 async function graphqlRequest<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
@@ -66,6 +75,10 @@ const WORK_FIELDS = `
     ipfsCid
     soulbound
     owner { id }
+  }
+  credits {
+    bps
+    collaborator { id }
   }
 `;
 
@@ -171,7 +184,7 @@ export interface IndexedCredit {
   author: { id: string };
   collaborator: { id: string };
   /** `credits` = todos los créditos de esa obra (para calcular el reparto). */
-  work: IndexedWork & { credits: { bps: number }[] };
+  work: IndexedWork;
 }
 
 const CREDIT_FIELDS = `
@@ -181,7 +194,7 @@ const CREDIT_FIELDS = `
   txHash
   author { id }
   collaborator { id }
-  work { ${WORK_FIELDS} credits { bps } }
+  work { ${WORK_FIELDS} }
 `;
 
 /** Créditos recibidos por una wallet (comparación case-insensitive con _ilike). */

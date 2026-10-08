@@ -7,20 +7,35 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getWorksByAuthor, type IndexedWork } from "@/services/EnvioIndexerService";
-import { LighthouseService } from "@/services/LighthouseService";
+import { LighthouseService, DEFAULT_NFT_METADATA_IMAGE } from "@/services/LighthouseService";
 
 export interface WorkWithMetadata extends IndexedWork {
   title?: string;
   artist?: string;
+  /** Primera URL candidata de la portada (compatibilidad). */
   coverUrl?: string;
+  /** URLs candidatas de la portada, en orden de preferencia. Vacío → sin portada. */
+  coverUrls?: string[];
   audioCid?: string;
   isEncrypted?: boolean;
   metadataError?: string;
 }
 
-function ipfsUriToUrl(uri: string): string {
-  const cid = uri.replace(/^ipfs:\/\//, "");
-  return LighthouseService.gatewayUrl(cid);
+/**
+ * URLs candidatas para la portada, en orden:
+ *  1) gateway del servicio (proxy /api/ipfs en Vercel, que a veces da 402/redirect)
+ *  2) gateway directo de Lighthouse
+ * Una imagen https:// se usa tal cual. La imagen por defecto del NFT se ignora
+ * (la UI muestra el ícono de audífonos en su lugar).
+ */
+function coverUrlsFromImage(image: unknown): string[] {
+  const raw = typeof image === "string" ? image.trim() : "";
+  if (!raw || raw === DEFAULT_NFT_METADATA_IMAGE) return [];
+  if (/^https?:\/\//i.test(raw)) return [raw];
+
+  const cid = raw.replace(/^ipfs:\/\//i, "").replace(/^\/+/, "");
+  if (!cid) return [];
+  return [LighthouseService.gatewayUrl(cid), `https://gateway.lighthouse.storage/ipfs/${cid}`];
 }
 
 function extractArtist(attributes: Array<{ trait_type: string; value: unknown }> = []): string | undefined {
@@ -87,11 +102,13 @@ async function fetchMetadataJSON(ipfsCid: string): Promise<any> {
 async function enrichWork(work: IndexedWork): Promise<WorkWithMetadata> {
   try {
     const meta = await fetchMetadataJSON(work.ipfsCid);
+    const coverUrls = coverUrlsFromImage(meta?.image);
     return {
       ...work,
       title: meta?.name,
       artist: extractArtist(meta?.attributes),
-      coverUrl: meta?.image ? ipfsUriToUrl(meta.image) : undefined,
+      coverUrl: coverUrls[0],
+      coverUrls,
       audioCid: extractAudioCid(meta),
       isEncrypted: extractIsEncrypted(meta),
     };

@@ -9,6 +9,8 @@ import { useMemo, useState } from "react";
 import { useIndexedWorks } from "@/hooks/useIndexedWorks";
 import { exitArtistProfile } from "@/lib/Artistnavigation";
 import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
+import { WorkCover } from "@/components/WorkCover";
+import { CollaboratorsList } from "@/components/CollaboratorsList";
 import { LighthouseService } from "@/services/LighthouseService";
 import { useWallet } from "@/hooks/useWallet";
 import { Card } from "@/components/ui/card";
@@ -168,11 +170,9 @@ export function ArtistProfile({ address }: Props) {
                     )}
                   </div>
 
-                  {w.coverUrl && (
-                    <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800">
-                      <img src={w.coverUrl} alt="" className="h-40 w-full object-cover" loading="lazy" />
-                    </div>
-                  )}
+                  <div className="mb-4">
+                    <WorkCover urls={w.coverUrl} className="h-40" />
+                  </div>
 
                   <h3 className="truncate font-display text-base font-bold uppercase text-white">
                     {w.title ?? `Obra #${w.certificate?.tokenId ?? ""}`}
@@ -182,6 +182,8 @@ export function ArtistProfile({ address }: Props) {
                       {w.artist}
                     </p>
                   )}
+
+                  <CollaboratorsList credits={w.credits} myAddress={myAddress} />
 
                   <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
                     <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">

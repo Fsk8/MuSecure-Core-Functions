@@ -6,12 +6,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
-import { usePrivy, useIdentityToken } from "@privy-io/react-auth";
+import { usePrivy } from "@privy-io/react-auth";
 import { useWallet } from "@/hooks/useWallet";
-import { resolveCollaborators } from "@/lib/resolveCollaborators"; // TEMPORAL (prueba Privy)
 import { EncryptedAudioPlayer } from "@/components/Encryptedaudioplayer";
 import { LighthouseService } from "@/services/LighthouseService";
-import { getWorksByAuthor, getAllWorks, getStats, type IndexedWork, type IndexerStats } from "@/services/EnvioIndexerService";
+import { getWorksByAuthor, getAllWorks, getCreditsByCollaborator, getStats, type IndexedWork, type IndexedWorkCredit, type IndexerStats } from "@/services/EnvioIndexerService";
+import { CollaboratorsList } from "@/components/CollaboratorsList";
 import { goToArtistProfile } from "@/lib/Artistnavigation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +52,8 @@ interface WorkItem {
   artist: string;
   isEncrypted: boolean;
   metaLoading: boolean;
+  /** Co-autores acreditados on-chain (solo viene del indexador Envio). */
+  credits?: IndexedWorkCredit[];
 }
 
 function cleanCid(raw: string): string {
@@ -73,6 +75,7 @@ function indexedToWorkItem(w: IndexedWork): WorkItem {
     artist: "...",
     isEncrypted: false,
     metaLoading: true,
+    credits: w.credits ?? [],
   };
 }
 
@@ -117,19 +120,20 @@ async function fetchWorksFromRpc(authorAddress: string | null): Promise<WorkItem
 export function Dashboard() {
   const { authenticated, login } = usePrivy();
   const { address, signMessage, isReady } = useWallet();
-  const { identityToken } = useIdentityToken(); // TEMPORAL (prueba Privy)
   
   const [works, setWorks] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [showOnlyMine, setShowOnlyMine] = useState(true);
+  /** Obras de otros autores donde mi wallet figura como co-autora. */
+  const [showCollabs, setShowCollabs] = useState(false);
   const [artistQuery, setArtistQuery] = useState("");
   const [dataSource, setDataSource] = useState<"envio" | "rpc" | null>(null);
   const [stats, setStats] = useState<IndexerStats | null>(null);
 
   const fetchWorks = useCallback(async () => {
-    if (showOnlyMine && !address) return;
+    if ((showOnlyMine || showCollabs) && !address) return;
     
     setFetchError(null);
     setRefreshing(true);
@@ -138,13 +142,23 @@ export function Dashboard() {
 
     // 1) Fuente principal: indexer Envio (GraphQL) — rápido, sin escanear logs on-chain
     try {
-      const indexed = showOnlyMine
-        ? await getWorksByAuthor(address!)
-        : await getAllWorks(500);
+      const indexed = showCollabs
+        ? (await getCreditsByCollaborator(address!)).map((c) => c.work)
+        : showOnlyMine
+          ? await getWorksByAuthor(address!)
+          : await getAllWorks(500);
       items = indexed.map(indexedToWorkItem);
       setDataSource("envio");
     } catch (indexerErr) {
       console.warn("[Dashboard] Envio no disponible, usando RPC directo:", indexerErr);
+
+      // Los créditos solo existen en el indexador: sin Envio no hay fallback por RPC.
+      if (showCollabs) {
+        setFetchError("Las colaboraciones requieren el indexador Envio, que no responde ahora.");
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
 
       // 2) Fallback: leer eventos directo del RPC (comportamiento anterior)
       try {
@@ -235,7 +249,7 @@ export function Dashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [address, showOnlyMine]);
+  }, [address, showOnlyMine, showCollabs]);
 
   useEffect(() => {
     if (authenticated) fetchWorks();
@@ -276,41 +290,10 @@ export function Dashboard() {
 
   return (
     <div className="space-y-8 pt-4 pb-12 px-4 sm:px-0">
-      {/* ───── TEMPORAL: prueba de /api/resolve-collaborators. BORRAR este bloque después. ───── */}
-      <div className="rounded-2xl border border-dashed border-amber-500/40 bg-amber-500/5 p-4">
-        <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-400">
-          Prueba temporal — Privy
-        </p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={async () => {
-            const email = window.prompt(
-              "Correo secundario a probar (uno que NUNCA haya entrado a la app):",
-            );
-            if (!email) return;
-            try {
-              const result = await resolveCollaborators(identityToken, [email.trim()]);
-              console.log("RESULTADO:", result);
-              alert(JSON.stringify(result, null, 2));
-            } catch (e) {
-              console.error("ERROR:", e);
-              alert("ERROR: " + (e as Error).message);
-            }
-          }}
-        >
-          TEST resolve
-        </Button>
-        <p className="mt-3 break-all font-mono text-[10px] text-zinc-400">
-          Mi wallet: {address ?? "…"}
-        </p>
-      </div>
-      {/* ───── FIN DEL BLOQUE TEMPORAL ───── */}
-
       <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-display text-2xl font-bold text-white tracking-tight">
-            {showOnlyMine ? "Mis Protecciones" : "Explorar Obras"}
+            {showCollabs ? "Mis Colaboraciones" : showOnlyMine ? "Mis Protecciones" : "Explorar Obras"}
           </h2>
           <p className="font-mono text-[10px] uppercase tracking-widest text-emerald-500/60 mt-1">
              Arbitrum Sepolia Ledger{dataSource === "envio" && " · ⚡ Indexed by Envio"}
@@ -326,13 +309,29 @@ export function Dashboard() {
                 type="checkbox" 
                 className="sr-only peer" 
                 checked={showOnlyMine}
-                onChange={() => setShowOnlyMine(!showOnlyMine)}
+                onChange={() => {
+                  setShowCollabs(false);
+                  setShowOnlyMine(!showOnlyMine);
+                }}
               />
               <div className="h-5 w-9 rounded-full bg-zinc-800 border border-zinc-700 peer-checked:bg-emerald-600 peer-checked:border-emerald-500 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-zinc-400 after:transition-all peer-checked:after:translate-x-full peer-checked:after:bg-white content-['']"></div>
             </label>
 
             <User className={`h-3.5 w-3.5 transition-colors ${showOnlyMine ? "text-emerald-500" : "text-zinc-600"}`} />
           </div>
+
+          <div className="h-6 w-[1px] bg-zinc-800"></div>
+
+          <Button
+            variant={showCollabs ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setShowCollabs((v) => !v)}
+            className="h-8 gap-1.5 rounded-xl px-3 font-mono text-[10px]"
+            title="Obras de otros autores donde figuras como co-autor"
+          >
+            <Users className={`h-3.5 w-3.5 ${showCollabs ? "text-violet-400" : "text-zinc-500"}`} />
+            Colaboraciones
+          </Button>
 
           <div className="h-6 w-[1px] bg-zinc-800"></div>
 
@@ -481,8 +480,8 @@ export function Dashboard() {
                     ) : (
                       <>
                         <h3 className="truncate font-display text-lg font-bold text-white tracking-tight uppercase group-hover:text-emerald-400 transition-colors">{item.title}</h3>
-                        <p className={`mt-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500 italic ${showOnlyMine ? "mb-6" : "mb-1"}`}>By {item.artist}</p>
-                        {!showOnlyMine && (
+                        <p className={`mt-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500 italic ${showOnlyMine && !showCollabs ? "mb-6" : "mb-1"}`}>By {item.artist}</p>
+                        {(!showOnlyMine || showCollabs) && (
                           <button
                             onClick={() => goToArtistProfile(item.author)}
                             title={`Ver perfil de ${item.author}`}
@@ -493,6 +492,8 @@ export function Dashboard() {
                         )}
                       </>
                     )}
+
+                    <CollaboratorsList credits={item.credits} myAddress={address} />
 
                     <div className="mb-6 grid grid-cols-2 gap-2">
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
