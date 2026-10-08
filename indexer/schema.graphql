@@ -47,4 +47,58 @@ type Credit {
   bps: Int! # puntos base: 1 = 0,01 %
   creditedAt: BigInt! # block timestamp
   txHash: String!
+
 }
+# ── AÑADIR AL FINAL de indexer/schema.graphql ─────────────────────────────────
+# Entidades planas (sin relaciones) para no depender del resto del schema.
+
+"Precio vigente de licencia por obra (id = fingerprintHash). price = 0 → fuera de venta."
+type LicenseListing @entity {
+  id: ID!
+  fingerprintHash: String! @index
+  author: String! @index
+  price: BigInt!
+  updatedAt: BigInt!
+}
+
+"Licencia comprada (id = fingerprintHash-buyer)."
+type License @entity {
+  id: ID!
+  fingerprintHash: String! @index
+  buyer: String! @index
+  author: String! @index
+  price: BigInt!
+  purchasedAt: BigInt!
+  txHash: String!
+}
+
+"Un pago de regalía a una wallet (id = txHash-logIndex). direct=false → quedó en claimable."
+type Royalty @entity {
+  id: ID!
+  fingerprintHash: String! @index
+  recipient: String! @index
+  amount: BigInt!
+  isAuthor: Boolean!
+  direct: Boolean!
+  paidAt: BigInt!
+  txHash: String!
+}
+
+"Retiro de fondos acumulados vía withdraw() (id = txHash-logIndex)."
+type RoyaltyClaim @entity {
+  id: ID!
+  account: String! @index
+  amount: BigInt!
+  claimedAt: BigInt!
+  txHash: String!
+}
+
+"Totales por wallet (id = address). pending = no entregado directo y aún no retirado."
+type Earnings @entity {
+  id: ID!
+  totalEarned: BigInt!
+  pending: BigInt!
+  salesCount: Int!
+}
+
+

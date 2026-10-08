@@ -29,3 +29,11 @@ chains:
           - "0xadE430FE5D6561180FF3bBDD82C93005D1b467E6"
         events:
           - event: CollaboratorCredited(bytes32 indexed fingerprintHash, address indexed author, address indexed collaborator, uint16 bps)
+      - name: MuSecureLicensing
+        address:
+          - "0x495e9fdeDe572ee6F5cAfBED5818a080d400Db58"
+        events:
+          - event: LicensePriceSet(bytes32 indexed fingerprintHash, address indexed author, uint256 price)
+          - event: LicensePurchased(bytes32 indexed fingerprintHash, address indexed buyer, address indexed author, uint256 price)
+          - event: RoyaltyPaid(bytes32 indexed fingerprintHash, address indexed recipient, uint256 amount, bool isAuthor, bool direct)
+          - event: RoyaltyClaimed(address indexed account, uint256 amount)

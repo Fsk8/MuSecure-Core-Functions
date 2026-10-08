@@ -16,6 +16,7 @@
 import { useMemo } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallet } from "@/hooks/useWallet";
+import { EarningsPanel } from "@/components/EarningsPanel";
 import { useMyCredits, type CreditEntry } from "@/hooks/useMyCredits";
 import { goToArtistProfile } from "@/lib/Artistnavigation";
 import { LighthouseService } from "@/services/LighthouseService";
@@ -269,6 +270,8 @@ export function MyCredits() {
           Actualizar
         </Button>
       </div>
+
+      <EarningsPanel address={address} />
 
       {/* Identidad: correo verificado → wallet embebida */}
       <div className="rounded-[2.5rem] border border-zinc-800 bg-zinc-900/30 p-6 backdrop-blur-sm">

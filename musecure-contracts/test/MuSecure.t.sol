@@ -34,17 +34,25 @@ contract MuSecureTest is Test {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    function _sign(bytes32 fpHash, uint256 score, address sender)
+    /// Firma EXACTAMENTE lo que verifica MuSecureRegistry:
+    /// keccak256(fingerprintHash, score, ipfsCid, soulbound, msg.sender, chainid, registry)
+    function _signWith(uint256 pk, bytes32 fpHash, uint256 score, string memory ipfsCid, bool soulbound, address sender)
         internal view returns (bytes memory)
     {
         bytes32 msgHash = keccak256(
-            abi.encodePacked(fpHash, score, sender, block.chainid)
+            abi.encodePacked(fpHash, score, ipfsCid, soulbound, sender, block.chainid, address(registry))
         );
         bytes32 ethHash = keccak256(
             abi.encodePacked("\x19Ethereum Signed Message:\n32", msgHash)
         );
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, ethHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, ethHash);
         return abi.encodePacked(r, s, v);
+    }
+
+    function _sign(bytes32 fpHash, uint256 score, string memory ipfsCid, bool soulbound, address sender)
+        internal view returns (bytes memory)
+    {
+        return _signWith(signerPk, fpHash, score, ipfsCid, soulbound, sender);
     }
 
     function _register(
@@ -53,7 +61,7 @@ contract MuSecureTest is Test {
         uint256 score,
         bool soulbound
     ) internal returns (uint256 tokenId) {
-        bytes memory sig = _sign(fpHash, score, who);
+        bytes memory sig = _sign(fpHash, score, CID, soulbound, who);
         vm.prank(who);
         tokenId = registry.registerWork(fpHash, CID, score, soulbound, sig);
     }
@@ -88,7 +96,7 @@ contract MuSecureTest is Test {
     }
 
     function test_RegisterWork_Blocked() public {
-        bytes memory sig = _sign(FP_HASH, 96, artist);
+        bytes memory sig = _sign(FP_HASH, 96, CID, false, artist);
         vm.prank(artist);
         vm.expectRevert(bytes("MuSecure: work blocked - too similar to existing catalog"));
         registry.registerWork(FP_HASH, CID, 96, false, sig);
@@ -98,7 +106,7 @@ contract MuSecureTest is Test {
     function test_RevertIf_DuplicateFingerprint() public {
         _register(artist, FP_HASH, 20, false);
 
-        bytes memory sig = _sign(FP_HASH, 20, attacker);
+        bytes memory sig = _sign(FP_HASH, 20, CID, false, attacker);
         vm.prank(attacker);
         vm.expectRevert("MuSecure: already registered");
         registry.registerWork(FP_HASH, CID, 20, false, sig);
@@ -106,15 +114,7 @@ contract MuSecureTest is Test {
 
     function test_RevertIf_InvalidScoreSignature() public {
         // Firma con clave distinta al scoreSigner
-        uint256 fakePk = 0xDEAD;
-        bytes32 msgHash = keccak256(
-            abi.encodePacked(FP_HASH, uint256(20), artist, block.chainid)
-        );
-        bytes32 ethHash = keccak256(
-            abi.encodePacked("\x19Ethereum Signed Message:\n32", msgHash)
-        );
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(fakePk, ethHash);
-        bytes memory fakeSig = abi.encodePacked(r, s, v);
+        bytes memory fakeSig = _signWith(0xDEAD, FP_HASH, 20, CID, false, artist);
 
         vm.prank(artist);
         vm.expectRevert("MuSecure: invalid score signature");
@@ -123,7 +123,7 @@ contract MuSecureTest is Test {
 
     function test_RevertIf_WrongSender_InSignature() public {
         // Firma válida pero para otro sender — replay attack entre wallets
-        bytes memory sig = _sign(FP_HASH, 20, artist); // firmado para artist
+        bytes memory sig = _sign(FP_HASH, 20, CID, false, artist); // firmado para artist
         vm.prank(attacker);                              // attacker intenta usarla
         vm.expectRevert("MuSecure: invalid score signature");
         registry.registerWork(FP_HASH, CID, 20, false, sig);
@@ -176,7 +176,7 @@ contract MuSecureTest is Test {
         vm.prank(deployer);
         registry.pause();
 
-        bytes memory sig = _sign(FP_HASH, 20, artist);
+        bytes memory sig = _sign(FP_HASH, 20, CID, false, artist);
         vm.prank(artist);
         vm.expectRevert();
         registry.registerWork(FP_HASH, CID, 20, false, sig);
@@ -199,6 +199,28 @@ contract MuSecureTest is Test {
             assertEq(uint8(w.riskLevel), uint8(IMuSecureRegistry.RiskLevel.Low));
         }
     }
+
+    function test_RevertIf_CidTampered() public {
+        bytes memory sig = _sign(FP_HASH, 20, CID, false, artist);
+        vm.prank(artist);
+        vm.expectRevert("MuSecure: invalid score signature");
+        registry.registerWork(FP_HASH, "bafyOTHER", 20, false, sig);
+    }
+
+    function test_RevertIf_SoulboundTampered() public {
+        bytes memory sig = _sign(FP_HASH, 20, CID, false, artist);
+        vm.prank(artist);
+        vm.expectRevert("MuSecure: invalid score signature");
+        registry.registerWork(FP_HASH, CID, 20, true, sig);
+    }
+
+    function test_RevertIf_ScoreTampered() public {
+        bytes memory sig = _sign(FP_HASH, 20, CID, false, artist);
+        vm.prank(artist);
+        vm.expectRevert("MuSecure: invalid score signature");
+        registry.registerWork(FP_HASH, CID, 10, false, sig);
+    }
+
     // ── Fee refund ────────────────────────────────────────────────────────────
 
     function test_ExcessFeeRefunded() public {
@@ -209,7 +231,7 @@ contract MuSecureTest is Test {
         vm.deal(artist, 1 ether);
         uint256 balanceBefore = artist.balance;
 
-        bytes memory sig = _sign(FP_HASH, 20, artist);
+        bytes memory sig = _sign(FP_HASH, 20, CID, false, artist);
         vm.prank(artist);
         // Manda 0.01 ETH pero el fee es 0.001 — debe devolver 0.009
         registry.registerWork{value: 0.01 ether}(FP_HASH, CID, 20, false, sig);
@@ -218,24 +240,30 @@ contract MuSecureTest is Test {
         assertApproxEqAbs(artist.balance, balanceBefore - 0.001 ether, 1);
     }
 
-    // ── setSoulbound por token owner ──────────────────────────────────────────
+        // ── setSoulbound: solo el owner del contrato ──────────────────────────────
 
-    function test_TokenOwner_CanChangeSoulbound() public {
+    function test_ContractOwner_CanChangeSoulbound() public {
         uint256 tokenId = _register(artist, FP_HASH, 20, false);
         assertFalse(asset.isSoulbound(tokenId));
 
-        // El dueño del token puede activar soulbound
-        vm.prank(artist);
+        vm.prank(deployer);
         asset.setSoulbound(tokenId, true);
         assertTrue(asset.isSoulbound(tokenId));
+    }
+
+    function test_TokenOwner_CannotChangeSoulbound() public {
+        uint256 tokenId = _register(artist, FP_HASH, 20, false);
+
+        vm.prank(artist);
+        vm.expectRevert(); // OwnableUnauthorizedAccount
+        asset.setSoulbound(tokenId, true);
     }
 
     function test_Attacker_CannotChangeSoulbound() public {
         uint256 tokenId = _register(artist, FP_HASH, 20, false);
 
         vm.prank(attacker);
-        vm.expectRevert(bytes("MuSecureAsset: not token owner or contract owner"));
+        vm.expectRevert();
         asset.setSoulbound(tokenId, true);
     }
-
 }
