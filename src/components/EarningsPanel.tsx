@@ -64,7 +64,11 @@ export function EarningsPanel({ address }: { address: string | null | undefined 
         </p>
       )}
       {error && <p className="mt-3 text-[11px] text-amber-400">{error}</p>}
-      {indexerDown && <p className="mt-3 text-[11px] text-zinc-500">Historial no disponible (indexador). El saldo por retirar sí es on-chain.</p>}
+      {indexerDown && (
+        <p className="mt-3 break-words text-[11px] text-zinc-500">
+          Historial no disponible (indexador): {indexerDown}. El saldo por retirar sí es on-chain.
+        </p>
+      )}
 
       <div className="mt-6 border-t border-zinc-800 pt-4">
         <p className="mb-3 font-mono text-[9px] uppercase tracking-widest text-zinc-600">Últimos pagos</p>

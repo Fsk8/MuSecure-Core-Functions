@@ -84,11 +84,11 @@ export interface EarningsSummary {
 export async function fetchEarnings(address: string): Promise<EarningsSummary> {
   const a = address.toLowerCase();
   const data = await gql<{
-    Earnings_by_pk: { totalEarned: string; salesCount: number } | null;
+    Earnings: { totalEarned: string; salesCount: number }[];
     Royalty: { id: string; fingerprintHash: string; amount: string; isAuthor: boolean; direct: boolean; paidAt: string; txHash: string }[];
   }>(
     `query($id: String!, $a: String!) {
-      Earnings_by_pk(id: $id) { totalEarned salesCount }
+      Earnings(where: { id: { _eq: $id } }, limit: 1) { totalEarned salesCount }
       Royalty(where: { recipient: { _eq: $a } }, order_by: { paidAt: desc }, limit: 25) {
         id fingerprintHash amount isAuthor direct paidAt txHash
       }
@@ -96,8 +96,8 @@ export async function fetchEarnings(address: string): Promise<EarningsSummary> {
     { id: a, a },
   );
   return {
-    totalEarned: BigInt(data.Earnings_by_pk?.totalEarned ?? "0"),
-    salesCount: data.Earnings_by_pk?.salesCount ?? 0,
+    totalEarned: BigInt(data.Earnings[0]?.totalEarned ?? "0"),
+    salesCount: data.Earnings[0]?.salesCount ?? 0,
     royalties: data.Royalty.map((r) => ({
       id: r.id,
       fingerprintHash: r.fingerprintHash,
@@ -162,11 +162,11 @@ export interface LicenseRecord {
 
 export async function fetchLicenseRecord(hash: string, buyer: string): Promise<LicenseRecord | null> {
   try {
-    const d = await gql<{ License_by_pk: { price: string; purchasedAt: string; txHash: string } | null }>(
-      `query($id: String!) { License_by_pk(id: $id) { price purchasedAt txHash } }`,
+    const d = await gql<{ License: { price: string; purchasedAt: string; txHash: string }[] }>(
+      `query($id: String!) { License(where: { id: { _eq: $id } }, limit: 1) { price purchasedAt txHash } }`,
       { id: `${hash.toLowerCase()}-${buyer.toLowerCase()}` },
     );
-    const l = d.License_by_pk;
+    const l = d.License[0];
     return l ? { price: BigInt(l.price), purchasedAt: Number(l.purchasedAt), txHash: l.txHash } : null;
   } catch {
     return null;

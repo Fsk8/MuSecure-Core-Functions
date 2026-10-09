@@ -10,7 +10,7 @@ export function useEarnings(address: string | null | undefined) {
   const [summary, setSummary] = useState<EarningsSummary | null>(null);
   const [claimable, setClaimable] = useState<bigint>(0n);
   const [loading, setLoading] = useState(false);
-  const [indexerDown, setIndexerDown] = useState(false);
+  const [indexerDown, setIndexerDown] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -20,9 +20,11 @@ export function useEarnings(address: string | null | undefined) {
     const [s, c] = await Promise.allSettled([fetchEarnings(address), readClaimable(address)]);
     if (s.status === "fulfilled") {
       setSummary(s.value);
-      setIndexerDown(false);
+      setIndexerDown(null);
     } else {
-      setIndexerDown(true);
+      const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+      console.error("[Earnings] Envio falló:", s.reason);
+      setIndexerDown(msg);
     }
     if (c.status === "fulfilled") setClaimable(c.value);
     else setError("No se pudo leer tu saldo on-chain.");
