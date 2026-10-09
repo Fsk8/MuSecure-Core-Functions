@@ -151,3 +151,24 @@ export function getMyLicenses(buyer: string): Promise<Set<string>> {
 }
 
 export const isFingerprint = (h: unknown): h is string => typeof h === "string" && /^0x[0-9a-fA-F]{64}$/.test(h);
+
+/* ───────────── Datos de una licencia ya comprada (para el certificado) ───────────── */
+
+export interface LicenseRecord {
+  price: bigint;
+  purchasedAt: number; // segundos; 0 = desconocido (Envio aún no indexó)
+  txHash: string;
+}
+
+export async function fetchLicenseRecord(hash: string, buyer: string): Promise<LicenseRecord | null> {
+  try {
+    const d = await gql<{ License_by_pk: { price: string; purchasedAt: string; txHash: string } | null }>(
+      `query($id: String!) { License_by_pk(id: $id) { price purchasedAt txHash } }`,
+      { id: `${hash.toLowerCase()}-${buyer.toLowerCase()}` },
+    );
+    const l = d.License_by_pk;
+    return l ? { price: BigInt(l.price), purchasedAt: Number(l.purchasedAt), txHash: l.txHash } : null;
+  } catch {
+    return null;
+  }
+}

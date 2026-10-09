@@ -513,7 +513,7 @@ export function Dashboard() {
                   </div>
 
                   <div className="mt-auto space-y-4">
-                    <LicenseControl fingerprintHash={item.fingerprintHash} author={item.author} />
+                    <LicenseControl fingerprintHash={item.fingerprintHash} author={item.author} title={item.title} audioUrl={item.audioCid ? LighthouseService.audioUrl(item.audioCid) : null} isEncrypted={item.isEncrypted} />
                     {!item.metaLoading && (
                       item.isEncrypted ? (
                         !item.audioCid ? (

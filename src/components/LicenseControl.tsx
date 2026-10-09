@@ -14,7 +14,8 @@ import { useWallet } from "@/hooks/useWallet";
 import { useLicensingTx } from "@/hooks/useLicensingTx";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { BadgeCheck, Loader2, Tag, ExternalLink } from "lucide-react";
+import { BadgeCheck, Loader2, Tag, ExternalLink, FileText, Download } from "lucide-react";
+import { LicenseCertificate } from "@/components/LicenseCertificate";
 import { CHAIN, txUrl } from "@/lib/chain";
 import {
   LICENSING_ADDRESS,
@@ -34,9 +35,35 @@ interface Props {
   fingerprintHash?: string | null;
   /** Wallet del autor registrado en el Registry. */
   author?: string | null;
+  /** Para el certificado y la descarga del licenciado. */
+  title?: string;
+  /** URL del audio público (omitir u ocultar si la obra es cifrada). */
+  audioUrl?: string | null;
+  isEncrypted?: boolean;
 }
 
-export function LicenseControl({ fingerprintHash, author }: Props) {
+const AUDIO_EXT: Record<string, string> = {
+  "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/ogg": "ogg",
+  "audio/flac": "flac", "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/aac": "aac", "audio/webm": "webm",
+};
+
+async function downloadAudio(url: string, title: string) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(String(r.status));
+    const blob = await r.blob();
+    const ext = AUDIO_EXT[blob.type.split(";")[0]] ?? "mp3";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${title.replace(/[^\w\- ]+/g, "").trim() || "obra"}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch {
+    window.open(url, "_blank", "noopener"); // el gateway no permite fetch: se abre para guardar
+  }
+}
+
+export function LicenseControl({ fingerprintHash, author, title, audioUrl, isEncrypted }: Props) {
   const { authenticated, login } = usePrivy();
   const { address } = useWallet();
   const { send, state, reset } = useLicensingTx();
@@ -45,6 +72,9 @@ export function LicenseControl({ fingerprintHash, author }: Props) {
   const [owned, setOwned] = useState(false);
   const [input, setInput] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  const [showCert, setShowCert] = useState(false);
+  const [boughtTx, setBoughtTx] = useState<string | undefined>();
+  const [downloading, setDownloading] = useState(false);
 
   const valid = isFingerprint(fingerprintHash) && !!LICENSING_ADDRESS;
   const hash = valid ? normHash(fingerprintHash!).toLowerCase() : "";
@@ -104,7 +134,8 @@ export function LicenseControl({ fingerprintHash, author }: Props) {
         setPrice(onchain);
         throw new Error(`El precio cambió a ${formatMon(onchain)} ${CHAIN.symbol}. Revisa y vuelve a pulsar comprar.`);
       }
-      await send({ fn: "buyLicense", args: [hash], value: onchain });
+      const tx = await send({ fn: "buyLicense", args: [hash], value: onchain });
+      setBoughtTx(tx);
       invalidateLicenseCache();
       setOwned(true);
     } catch (e) {
@@ -119,6 +150,7 @@ export function LicenseControl({ fingerprintHash, author }: Props) {
   };
 
   return (
+    <>
     <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-left">
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-widest text-amber-400/80">
@@ -162,9 +194,34 @@ export function LicenseControl({ fingerprintHash, author }: Props) {
           )}
         </div>
       ) : owned ? (
-        <Badge variant="success" className="gap-1 text-[10px]">
-          <BadgeCheck className="h-3 w-3" /> Licencia adquirida
-        </Badge>
+        <div className="space-y-2">
+          <Badge variant="success" className="gap-1 text-[10px]">
+            <BadgeCheck className="h-3 w-3" /> Licencia adquirida
+          </Badge>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setShowCert(true)} className="gap-1.5">
+              <FileText className="h-3.5 w-3.5" /> Ver certificado
+            </Button>
+            {audioUrl && !isEncrypted && (
+              <Button
+                size="sm"
+                disabled={downloading}
+                onClick={async () => {
+                  setDownloading(true);
+                  await downloadAudio(audioUrl, title ?? "obra");
+                  setDownloading(false);
+                }}
+                className="gap-1.5"
+              >
+                {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                Descargar audio
+              </Button>
+            )}
+          </div>
+          {isEncrypted && (
+            <p className="font-mono text-[9px] text-zinc-600">Obra cifrada: la descarga no está disponible en esta demo.</p>
+          )}
+        </div>
       ) : price !== null && price > 0n ? (
         <>
           <Button onClick={() => void buy()} disabled={busy} size="sm" className="w-full gap-2">
@@ -196,5 +253,16 @@ export function LicenseControl({ fingerprintHash, author }: Props) {
         </p>
       )}
     </div>
+    {showCert && address && (
+      <LicenseCertificate
+        fingerprintHash={hash}
+        title={title ?? "Obra"}
+        licensee={address}
+        knownTx={boughtTx}
+        knownPrice={price ?? undefined}
+        onClose={() => setShowCert(false)}
+      />
+    )}
+    </>
   );
 }

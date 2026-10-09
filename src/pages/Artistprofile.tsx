@@ -195,7 +195,7 @@ export function ArtistProfile({ address }: Props) {
                   </div>
 
                   <div className="mt-auto space-y-3">
-                    <LicenseControl fingerprintHash={(w as any).fingerprintHash ?? (w as any).id} author={address} />
+                    <LicenseControl fingerprintHash={(w as any).fingerprintHash ?? (w as any).id} author={address} title={w.title ?? `Obra #${w.certificate?.tokenId ?? ""}`} audioUrl={w.audioCid ? LighthouseService.audioUrl(w.audioCid) : null} isEncrypted={w.isEncrypted} />
                     {w.isEncrypted ? (
                       !w.audioCid ? (
                         <div className="rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">

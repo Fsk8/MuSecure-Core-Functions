@@ -1063,7 +1063,7 @@ export const Explorer = () => {
 
                     {/* Reproductor */}
                     <div className="mt-auto space-y-4">
-                      {isOnchain && <LicenseControl fingerprintHash={work.fingerprintHash} author={work.author} />}
+                      {isOnchain && <LicenseControl fingerprintHash={work.fingerprintHash} author={work.author} title={work.title} audioUrl={work.audioCid ? LighthouseService.audioUrl(work.audioCid) : null} isEncrypted={work.isEncrypted} />}
                       {work.metaLoading ? (
                         <Skeleton className="h-14 w-full rounded-2xl" />
                       ) : work.isEncrypted ? (
