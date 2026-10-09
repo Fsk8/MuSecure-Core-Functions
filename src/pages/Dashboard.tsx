@@ -13,6 +13,7 @@ import { LighthouseService } from "@/services/LighthouseService";
 import { getWorksByAuthor, getAllWorks, getCreditsByCollaborator, getStats, type IndexedWork, type IndexedWorkCredit, type IndexerStats } from "@/services/EnvioIndexerService";
 import { CollaboratorsList } from "@/components/CollaboratorsList";
 import { LicenseControl } from "@/components/LicenseControl";
+import { EarningsPanel } from "@/components/EarningsPanel";
 import { goToArtistProfile } from "@/lib/Artistnavigation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -389,6 +390,9 @@ export function Dashboard() {
           )}
         </div>
       )}
+
+      {/* Regalías por licencias: solo en la vista personal */}
+      {showOnlyMine && !showCollabs && <EarningsPanel address={address} />}
 
       {stats && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
