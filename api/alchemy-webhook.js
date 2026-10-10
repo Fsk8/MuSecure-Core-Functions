@@ -148,13 +148,14 @@ export default async function handler(req, res) {
   }
   if (seen.size > 5000) seen.clear();
 
-  try {
-    for (const [tx, lines] of byTx) await notify(lines, tx);
-  } catch (e) {
-    // Si el aviso falla se responde 500 para que Alchemy reintente.
-    console.error("[alchemy-webhook] notify falló:", e);
-    for (const [tx, lines] of byTx) lines.length = 0;
-    return res.status(500).json({ error: "notify falló" });
+  // Un fallo al avisar (p. ej. Discord caído) NO debe devolver error: Alchemy pausa el webhook
+  // si recibe respuestas no-2xx durante 24 h. El evento ya se verificó y quedó en los logs.
+  for (const [tx, lines] of byTx) {
+    try {
+      await notify(lines, tx);
+    } catch (e) {
+      console.error("[alchemy-webhook] notify falló (se responde 200 igualmente):", e);
+    }
   }
 
   return res.status(200).json({ ok: true, transactions: byTx.size });
