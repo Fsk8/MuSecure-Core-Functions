@@ -25,7 +25,7 @@ export function BalanceBadge({ address }: { address: string | null }) {
 
     fetchBalance();
     // Opcional: Refrescar cada 10 segundos por si llega el airdrop
-    const interval = setInterval(fetchBalance, 10000);
+    const interval = setInterval(fetchBalance, 30000);
     return () => clearInterval(interval);
   }, [address]);
 

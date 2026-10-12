@@ -176,7 +176,7 @@ export async function interpretAcoustIdLookup(
   json: AcoustIdLookupJson
 ): Promise<CatalogAuthenticityReport> {
   if (json.status === "error") {
-    const msg = json.error?.message ?? "Error AcoustID";
+    const msg = json.error?.message ?? "AcoustID error";
     return {
       error: msg,
       catalogMatchScore: 0,
@@ -186,7 +186,7 @@ export async function interpretAcoustIdLookup(
       bestMatchScore: 0,
       matches: [],
       acoustIdOnlyTracks: [],
-      summary: `No se pudo consultar el catálogo: ${msg}`,
+      summary: `Could not query the catalog: ${msg}`,
     };
   }
 
@@ -201,7 +201,7 @@ export async function interpretAcoustIdLookup(
       matches: [],
       acoustIdOnlyTracks: [],
       summary:
-        "Sin coincidencias en AcoustID con esta huella. Suele indicar obra poco indexada o material propio; no garantiza ausencia total en otros catálogos.",
+        "No AcoustID matches for this fingerprint. This usually means a little-indexed work or original material; it does not guarantee absence from other catalogs.",
     };
   }
 
@@ -221,10 +221,10 @@ export async function interpretAcoustIdLookup(
 
   const summary =
     bestMatchScore >= 0.85
-      ? "Coincidencia fuerte con grabaciones conocidas en AcoustID/MusicBrainz. Revisa derechos antes de registrar como obra nueva."
+      ? "Strong match with known recordings in AcoustID/MusicBrainz. Check rights before registering as a new work."
       : bestMatchScore >= 0.45
-        ? "Hay coincidencias parciales. Conviene revisar títulos y artistas listados abajo."
-        : "Coincidencias débiles o ambiguas; menor probabilidad de ser una copia directa de una master comercial indexada.";
+        ? "There are partial matches. Review the titles and artists listed below."
+        : "Weak or ambiguous matches; lower likelihood of being a direct copy of an indexed commercial master.";
 
   return {
     catalogMatchScore,

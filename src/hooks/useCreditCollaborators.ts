@@ -55,12 +55,12 @@ const CREDITS_ABI = [
 
 const STEP_MESSAGES: Record<CreditStep, string> = {
   idle: "",
-  resolving: "Preparando las wallets de tus colaboradores...",
-  checking: "Verificando créditos previos...",
-  "waiting-wallet": "Confirmando en tu wallet...",
-  confirming: `Confirmando en ${CHAIN.name}...`,
-  done: "¡Co-autores acreditados on-chain!",
-  error: "Error en el proceso",
+  resolving: "Preparing your collaborators' wallets...",
+  checking: "Checking for previous credits...",
+  "waiting-wallet": "Confirm in your wallet...",
+  confirming: `Confirming on ${CHAIN.name}...`,
+  done: "Co-authors credited on-chain!",
+  error: "Process error",
 };
 
 export function useCreditCollaborators() {
@@ -77,9 +77,9 @@ export function useCreditCollaborators() {
       const rpcUrl = RPC_URL;
 
       try {
-        if (!creditsAddress) throw new Error("Falta VITE_CREDITS_ADDRESS en .env");
-        if (!isReady || !getProvider || !address) throw new Error("Wallet no disponible. Reconecta tu cuenta.");
-        if (input.collaborators.length === 0) throw new Error("No hay colaboradores que acreditar.");
+        if (!creditsAddress) throw new Error("Missing VITE_CREDITS_ADDRESS in .env");
+        if (!isReady || !getProvider || !address) throw new Error("Wallet unavailable. Reconnect your account.");
+        if (input.collaborators.length === 0) throw new Error("There are no collaborators to credit.");
 
         const hash = input.fingerprintHash.startsWith("0x")
           ? input.fingerprintHash
@@ -93,15 +93,15 @@ export function useCreditCollaborators() {
         );
         if (resolved.failed.length > 0) {
           throw new Error(
-            `No se pudo preparar la wallet de: ${resolved.failed.map((f) => f.email).join(", ")}. ` +
-              "Nada se acreditó (es inmutable); inténtalo de nuevo.",
+            `Could not prepare the wallet for: ${resolved.failed.map((f) => f.email).join(", ")}. ` +
+              "Nothing was credited (credits are immutable); try again.",
           );
         }
 
         const addrByEmail = new Map(resolved.collaborators.map((c) => [c.email.toLowerCase(), c.address]));
         const rows = input.collaborators.map((c) => {
           const wallet = addrByEmail.get(c.email.trim().toLowerCase());
-          if (!wallet) throw new Error(`Sin wallet para ${c.email}.`);
+          if (!wallet) throw new Error(`No wallet for ${c.email}.`);
           return {
             email: c.email.trim().toLowerCase(),
             address: ethers.getAddress(wallet),
@@ -113,21 +113,21 @@ export function useCreditCollaborators() {
         const seen = new Set<string>();
         for (const r of rows) {
           const key = r.address.toLowerCase();
-          if (key === address.toLowerCase()) throw new Error(`${r.email} resolvió a tu propia wallet.`);
-          if (seen.has(key)) throw new Error("Dos correos resolvieron a la misma wallet.");
+          if (key === address.toLowerCase()) throw new Error(`${r.email} resolved to your own wallet.`);
+          if (seen.has(key)) throw new Error("Two emails resolved to the same wallet.");
           seen.add(key);
-          if (!Number.isInteger(r.bps) || r.bps <= 0 || r.bps > 10_000) throw new Error(`Porcentaje inválido (${r.email}).`);
+          if (!Number.isInteger(r.bps) || r.bps <= 0 || r.bps > 10_000) throw new Error(`Invalid percentage (${r.email}).`);
         }
-        if (rows.reduce((s, r) => s + r.bps, 0) > 10_000) throw new Error("La suma de participaciones supera el 100%.");
+        if (rows.reduce((s, r) => s + r.bps, 0) > 10_000) throw new Error("Total shares exceed 100%.");
 
         // ── 2. ¿Ya se acreditó esta obra? (el contrato solo lo permite una vez) ──
         set("checking");
         const rpcProvider = new ethers.JsonRpcProvider(rpcUrl);
         const network = await rpcProvider.getNetwork();
-        if (network.chainId.toString() !== String(CHAIN.id)) throw new Error(`RPC en una red distinta a ${CHAIN.name}.`);
+        if (network.chainId.toString() !== String(CHAIN.id)) throw new Error(`RPC is on a network other than ${CHAIN.name}.`);
 
         const read = new ethers.Contract(creditsAddress, CREDITS_ABI, rpcProvider);
-        if (await read.hasCredits(hash)) throw new Error("Esta obra ya tiene co-autores acreditados.");
+        if (await read.hasCredits(hash)) throw new Error("This work already has credited co-authors.");
 
         // ── 3. Calldata, gas y envío ──────────────────────────────────────────
         const iface = new ethers.Interface(CREDITS_ABI);
@@ -148,8 +148,8 @@ export function useCreditCollaborators() {
             const reason = e?.reason ?? e?.shortMessage ?? e?.message ?? "revert";
             throw new Error(
               /not the author/i.test(reason)
-                ? "Solo el autor de la obra puede acreditar co-autores (¿otra wallet?)."
-                : `El contrato rechazó la transacción: ${reason}`,
+                ? "Only the author of the work can credit co-authors (different wallet?)."
+                : `The contract rejected the transaction: ${reason}`,
             );
           }
           // Otro error (RPC caído, etc.): se usa el gas fijo de arriba.
@@ -176,23 +176,23 @@ export function useCreditCollaborators() {
             maxPriorityFeePerGas: ethers.toBeHex(maxPriorityFeePerGas),
           },
         ]);
-        if (!txHash) throw new Error("No se recibió hash de transacción.");
+        if (!txHash) throw new Error("No transaction hash received.");
 
         // ── 4. Confirmación ───────────────────────────────────────────────────
         set("confirming", { txHash });
         const receipt = await rpcProvider.waitForTransaction(txHash, 1, 120_000);
-        if (!receipt) throw new Error("La transacción no se confirmó en 2 minutos.");
-        if (receipt.status === 0) throw new Error("La transacción fue revertida por el contrato.");
+        if (!receipt) throw new Error("The transaction was not confirmed within 2 minutes.");
+        if (receipt.status === 0) throw new Error("The transaction was reverted by the contract.");
 
         set("done", { txHash });
         return { txHash, credited: rows };
       } catch (err: any) {
         console.error("[CreditCollaborators] Error:", err);
-        let msg = err.reason ?? err.error?.message ?? err.message ?? "Error desconocido";
+        let msg = err.reason ?? err.error?.message ?? err.message ?? "Unknown error";
         if (msg.toLowerCase().includes("user rejected") || msg.includes("4001")) {
-          msg = "Transacción cancelada por el usuario.";
+          msg = "Transaction cancelled by the user.";
         } else if (msg.toLowerCase().includes("insufficient funds")) {
-          msg = "Fondos insuficientes para el gas.";
+          msg = "Insufficient funds for gas.";
         }
         set("error", { error: msg });
         throw new Error(msg);

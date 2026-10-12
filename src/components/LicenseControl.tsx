@@ -55,7 +55,7 @@ async function downloadAudio(url: string, title: string) {
     const ext = AUDIO_EXT[blob.type.split(";")[0]] ?? "mp3";
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `${title.replace(/[^\w\- ]+/g, "").trim() || "obra"}.${ext}`;
+    a.download = `${title.replace(/[^\w\- ]+/g, "").trim() || "work"}.${ext}`;
     a.click();
     URL.revokeObjectURL(a.href);
   } catch {
@@ -105,7 +105,7 @@ export function LicenseControl({ fingerprintHash, author, title, audioUrl, isEnc
 
   if (!valid) return null;
 
-  const fail = (e: unknown) => setLocalError(e instanceof Error ? e.message : "Error desconocido");
+  const fail = (e: unknown) => setLocalError(e instanceof Error ? e.message : "Unknown error");
 
   const savePrice = async (clear = false) => {
     setLocalError(null);
@@ -128,11 +128,11 @@ export function LicenseControl({ fingerprintHash, author, title, audioUrl, isEnc
       const onchain = await readPrice(hash);
       if (onchain === 0n) {
         setPrice(0n);
-        throw new Error("Esta obra ya no está a la venta.");
+        throw new Error("This work is no longer for sale.");
       }
       if (onchain !== price) {
         setPrice(onchain);
-        throw new Error(`El precio cambió a ${formatMon(onchain)} ${CHAIN.symbol}. Revisa y vuelve a pulsar comprar.`);
+        throw new Error(`The price changed to ${formatMon(onchain)} ${CHAIN.symbol}. Review it and click buy again.`);
       }
       const tx = await send({ fn: "buyLicense", args: [hash], value: onchain });
       setBoughtTx(tx);
@@ -154,7 +154,7 @@ export function LicenseControl({ fingerprintHash, author, title, audioUrl, isEnc
     <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-left">
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-widest text-amber-400/80">
-          <Tag className="h-3 w-3" /> Licencia
+          <Tag className="h-3 w-3" /> License
         </p>
         {price === null ? (
           <Loader2 className="h-3 w-3 animate-spin text-zinc-600" />
@@ -163,7 +163,7 @@ export function LicenseControl({ fingerprintHash, author, title, audioUrl, isEnc
             {formatMon(price)} {CHAIN.symbol}
           </span>
         ) : (
-          <span className="font-mono text-[9px] text-zinc-600">No está a la venta</span>
+          <span className="font-mono text-[9px] text-zinc-600">Not for sale</span>
         )}
       </div>
 
@@ -174,13 +174,13 @@ export function LicenseControl({ fingerprintHash, author, title, audioUrl, isEnc
               value={input}
               onChange={(e) => setInput(e.target.value)}
               inputMode="decimal"
-              placeholder={`Precio en ${CHAIN.symbol} (ej. 0.5)`}
+              placeholder={`Price in ${CHAIN.symbol} (e.g. 0.5)`}
               disabled={busy}
               className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-amber-500/50 focus:outline-none"
             />
             <Button size="sm" onClick={() => void savePrice()} disabled={busy || !input.trim()} className="gap-1.5">
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              {price && price > 0n ? "Cambiar" : "Poner a la venta"}
+              {price && price > 0n ? "Update price" : "List for sale"}
             </Button>
           </div>
           {price !== null && price > 0n && (
@@ -189,18 +189,18 @@ export function LicenseControl({ fingerprintHash, author, title, audioUrl, isEnc
               disabled={busy}
               className="font-mono text-[9px] uppercase tracking-widest text-zinc-500 hover:text-red-400 disabled:opacity-50"
             >
-              Retirar de la venta
+              Remove from sale
             </button>
           )}
         </div>
       ) : owned ? (
         <div className="space-y-2">
           <Badge variant="success" className="gap-1 text-[10px]">
-            <BadgeCheck className="h-3 w-3" /> Licencia adquirida
+            <BadgeCheck className="h-3 w-3" /> License acquired
           </Badge>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="secondary" onClick={() => setShowCert(true)} className="gap-1.5">
-              <FileText className="h-3.5 w-3.5" /> Ver certificado
+              <FileText className="h-3.5 w-3.5" /> View certificate
             </Button>
             {audioUrl && !isEncrypted && (
               <Button
@@ -208,28 +208,28 @@ export function LicenseControl({ fingerprintHash, author, title, audioUrl, isEnc
                 disabled={downloading}
                 onClick={async () => {
                   setDownloading(true);
-                  await downloadAudio(audioUrl, title ?? "obra");
+                  await downloadAudio(audioUrl, title ?? "work");
                   setDownloading(false);
                 }}
                 className="gap-1.5"
               >
                 {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                Descargar audio
+                Download audio
               </Button>
             )}
           </div>
           {isEncrypted && (
-            <p className="font-mono text-[9px] text-zinc-600">Obra cifrada: la descarga no está disponible en esta demo.</p>
+            <p className="font-mono text-[9px] text-zinc-600">Encrypted work: download is not available in this demo.</p>
           )}
         </div>
       ) : price !== null && price > 0n ? (
         <>
           <Button onClick={() => void buy()} disabled={busy} size="sm" className="w-full gap-2">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            {busy ? state.message : authenticated ? `Comprar licencia · ${formatMon(price)} ${CHAIN.symbol}` : "Conectar para comprar"}
+            {busy ? state.message : authenticated ? `Buy license · ${formatMon(price)} ${CHAIN.symbol}` : "Connect to buy"}
           </Button>
           <p className="mt-2 font-mono text-[9px] leading-relaxed text-zinc-600">
-            El pago se reparte al instante entre el autor y sus co-autores.
+            Payment is split instantly between the author and co-authors.
           </p>
         </>
       ) : null}
@@ -241,14 +241,14 @@ export function LicenseControl({ fingerprintHash, author, title, audioUrl, isEnc
           rel="noreferrer"
           className="mt-2 inline-flex items-center gap-1 font-mono text-[9px] text-emerald-400 no-underline hover:underline"
         >
-          Confirmado · ver transacción <ExternalLink className="h-2.5 w-2.5" />
+          Confirmed · view transaction <ExternalLink className="h-2.5 w-2.5" />
         </a>
       )}
       {error && (
         <p className="mt-2 text-[10px] leading-snug text-red-400">
           {error}{" "}
           <button className="underline" onClick={dismiss}>
-            cerrar
+            dismiss
           </button>
         </p>
       )}
@@ -256,7 +256,7 @@ export function LicenseControl({ fingerprintHash, author, title, audioUrl, isEnc
     {showCert && address && (
       <LicenseCertificate
         fingerprintHash={hash}
-        title={title ?? "Obra"}
+        title={title ?? "Work"}
         licensee={address}
         knownTx={boughtTx}
         knownPrice={price ?? undefined}

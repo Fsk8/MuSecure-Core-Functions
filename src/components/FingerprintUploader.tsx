@@ -75,7 +75,7 @@ function MatchCoverArt({ releaseId, title }: { releaseId: string | null | undefi
   return (
     <img
       src={coverUrl}
-      alt={`Portada de ${title}`}
+      alt={`Cover of ${title}`}
       className="h-24 w-24 shrink-0 rounded-xl object-cover border border-blue-500/20"
       onError={() => setImageError(true)}
     />
@@ -113,7 +113,7 @@ export const FingerprintUploader = () => {
       setFpResult(null);
       setCatalogReport(null);
       setCurrentStep(0);
-      setStatus("Track seleccionado");
+      setStatus("Track selected");
     }
   };
 
@@ -121,24 +121,24 @@ export const FingerprintUploader = () => {
     if (!file) return;
     try {
       setLoading(true);
-      setStatus("Generando huella digital...");
+      setStatus("Generating audio fingerprint...");
       const fp = await AudioFingerprintService.getInstance().generateFingerprint(file);
       setFpResult(fp);
-      setStatus("Escaneando bases de datos globales...");
+      setStatus("Scanning global databases...");
       const check = await runCatalogAuthenticityCheck(
         file,
         import.meta.env.VITE_ACOUSTID_CLIENT_KEY || "",
         (stage) => {
           if (stage === "musicbrainz") {
-            setStatus("Obteniendo portada de MusicBrainz...");
+            setStatus("Fetching MusicBrainz cover art...");
           }
         }
       );
       setCatalogReport(check.report);
       setCurrentStep(1);
-      setStatus("Análisis finalizado");
+      setStatus("Analysis complete");
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Error desconocido";
+      const msg = e instanceof Error ? e.message : "Unknown error";
       setStatus(`Error: ${msg}`);
     } finally {
       setLoading(false);
@@ -149,7 +149,7 @@ export const FingerprintUploader = () => {
     return (
       <div className="flex justify-center py-20">
         <p className="font-mono text-xs uppercase tracking-widest text-zinc-600">
-          Sincronizando...
+          Syncing...
         </p>
       </div>
     );
@@ -182,7 +182,7 @@ export const FingerprintUploader = () => {
           <StepIndicator currentStep={currentStep} totalSteps={TOTAL_STEPS} />
           {authenticated && (
             <Button variant="destructive" size="sm" onClick={logout}>
-              Salir
+              Sign out
             </Button>
           )}
         </div>
@@ -218,7 +218,7 @@ export const FingerprintUploader = () => {
               >
                 <div className="flex items-center justify-between mb-4">
                   <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                    Originalidad
+                    Originality
                   </span>
                   <span
                     className={`font-display text-3xl font-bold ${
@@ -242,7 +242,7 @@ export const FingerprintUploader = () => {
                   <div className="mt-4 flex items-center gap-2">
                     <XCircle className="h-3.5 w-3.5 text-red-400" />
                     <p className="font-mono text-[11px] font-bold uppercase text-red-400">
-                      Coincidencia alta detectada
+                      High match detected
                     </p>
                   </div>
                 )}
@@ -251,7 +251,7 @@ export const FingerprintUploader = () => {
                 {catalogReport.matches.length > 0 && (
                   <div className="mt-5 space-y-3">
                     <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-blue-400">
-                      Coincidencias en MusicBrainz
+                      MusicBrainz matches
                     </p>
                     
                     {/* Mejor match destacado con portada */}
@@ -261,21 +261,21 @@ export const FingerprintUploader = () => {
                           {/* ✨ PORTADA */}
                           <MatchCoverArt 
                             releaseId={bestMatch.releaseId} 
-                            title={bestMatch.title || "Grabación"} 
+                            title={bestMatch.title || "Recording"} 
                           />
                           
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between mb-1">
                               <Badge className="bg-blue-500/30 text-blue-300 border-blue-500/50">
-                                Mejor coincidencia
+                                Best match
                               </Badge>
                               <Badge variant="success">{bestMatch.scorePercent}%</Badge>
                             </div>
                             <p className="font-display text-base font-bold text-white truncate">
-                              {bestMatch.title || "Grabación"}
+                              {bestMatch.title || "Recording"}
                             </p>
                             <p className="text-sm text-blue-300/80 truncate">
-                              {bestMatch.artist || "Artista desconocido"}
+                              {bestMatch.artist || "Unknown artist"}
                             </p>
                             {bestMatch.releaseTitle && (
                               <p className="text-xs text-blue-400/60 truncate mt-1">
@@ -290,12 +290,12 @@ export const FingerprintUploader = () => {
                                   rel="noreferrer"
                                   className="inline-flex items-center gap-1 font-mono text-[9px] text-blue-400/60 hover:text-blue-400 transition-colors"
                                 >
-                                  Ver en MusicBrainz <ExternalLink className="h-2.5 w-2.5" />
+                                  View on MusicBrainz <ExternalLink className="h-2.5 w-2.5" />
                                 </a>
                               )}
                               {bestMatch.releaseId && (
                                 <span className="font-mono text-[9px] text-emerald-400/60 flex items-center gap-1">
-                                  <ImageIcon className="h-2.5 w-2.5" /> Portada disponible
+                                  <ImageIcon className="h-2.5 w-2.5" /> Cover art available
                                 </span>
                               )}
                             </div>
@@ -308,7 +308,7 @@ export const FingerprintUploader = () => {
                     {catalogReport.matches.length > 1 && (
                       <div className="space-y-2">
                         <p className="font-mono text-[9px] uppercase tracking-wider text-zinc-500 mt-3">
-                          Otras coincidencias ({catalogReport.matches.length - 1})
+                          Other matches ({catalogReport.matches.length - 1})
                         </p>
                         {catalogReport.matches.slice(1, 4).map((m) => (
                           <a
@@ -320,7 +320,7 @@ export const FingerprintUploader = () => {
                           >
                             <div className="min-w-0 mr-3">
                               <p className="truncate text-sm text-zinc-300">
-                                {m.title || "Grabación"}
+                                {m.title || "Recording"}
                                 {m.artist ? ` — ${m.artist}` : ""}
                               </p>
                             </div>
@@ -337,7 +337,7 @@ export const FingerprintUploader = () => {
                   catalogReport.acoustIdOnlyTracks.length > 0 && (
                     <div className="mt-5 space-y-2">
                       <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-amber-500">
-                        Reconocido en AcoustID
+                        Recognized in AcoustID
                       </p>
                       {catalogReport.acoustIdOnlyTracks.slice(0, 3).map((t) => (
                         <a
@@ -377,7 +377,7 @@ export const FingerprintUploader = () => {
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-white">
-                    {file ? file.name : "Seleccionar archivo de audio"}
+                    {file ? file.name : "Select audio file"}
                   </p>
                   <p className="text-[11px] text-zinc-600">
                     {file
@@ -408,12 +408,12 @@ export const FingerprintUploader = () => {
                     >
                       <Search className="h-4 w-4" />
                     </motion.div>
-                    Analizando...
+                    Analyzing...
                   </>
                 ) : (
                   <>
                     <Search className="mr-2 h-4 w-4" />
-                    Analizar Originalidad
+                    Analyze Originality
                   </>
                 )}
               </Button>
@@ -444,8 +444,8 @@ export const FingerprintUploader = () => {
                   className="flex flex-col items-center gap-4 rounded-3xl border border-emerald-500/20 bg-emerald-500/5 p-8"
                 >
                   <CheckCircle2 className="h-10 w-10 text-emerald-500" />
-                  <p className="font-display text-lg font-bold text-white">Obra Protegida</p>
-                  <p className="font-mono text-[11px] text-zinc-500">Registrada en Arbitrum Sepolia</p>
+                  <p className="font-display text-lg font-bold text-white">Work Protected</p>
+                  <p className="font-mono text-[11px] text-zinc-500">Registered on-chain</p>
                 </motion.div>
               )}
             </AnimatePresence>

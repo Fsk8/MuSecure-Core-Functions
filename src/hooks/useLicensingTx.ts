@@ -22,19 +22,19 @@ export interface LicensingTxState {
 
 const MESSAGES: Record<LicensingStep, string> = {
   idle: "",
-  "waiting-wallet": "Confirmando en tu wallet...",
-  confirming: `Confirmando en ${CHAIN.name}...`,
-  done: "¡Listo!",
-  error: "Error en el proceso",
+  "waiting-wallet": "Confirm in your wallet...",
+  confirming: `Confirming on ${CHAIN.name}...`,
+  done: "Done!",
+  error: "Process error",
 };
 
 const REVERTS: [RegExp, string][] = [
-  [/not the author/i, "Solo el autor de la obra puede fijar el precio."],
-  [/not for sale/i, "Esta obra no está a la venta."],
-  [/wrong payment/i, "El precio cambió. Actualiza la página e inténtalo de nuevo."],
-  [/already licensed/i, "Ya tienes una licencia de esta obra."],
-  [/nothing to claim/i, "No tienes fondos pendientes por retirar."],
-  [/not found/i, "La obra no existe en el Registry."],
+  [/not the author/i, "Only the author of the work can set the price."],
+  [/not for sale/i, "This work is not for sale."],
+  [/wrong payment/i, "The price changed. Refresh the page and try again."],
+  [/already licensed/i, "You already have a license for this work."],
+  [/nothing to claim/i, "You have no pending funds to withdraw."],
+  [/not found/i, "The work does not exist in the Registry."],
 ];
 
 type Call =
@@ -52,8 +52,8 @@ export function useLicensingTx() {
   const send = useCallback(
     async (call: Call): Promise<string> => {
       try {
-        if (!LICENSING_ADDRESS) throw new Error("Falta VITE_LICENSING_ADDRESS en .env");
-        if (!isReady || !getProvider || !address) throw new Error("Wallet no disponible. Reconecta tu cuenta.");
+        if (!LICENSING_ADDRESS) throw new Error("Missing VITE_LICENSING_ADDRESS in .env");
+        if (!isReady || !getProvider || !address) throw new Error("Wallet unavailable. Reconnect your account.");
 
         const args = call.fn === "withdraw" ? [] : [normHash(call.args[0] as string), ...call.args.slice(1)];
         const iface = new ethers.Interface(LICENSING_ABI);
@@ -62,11 +62,11 @@ export function useLicensingTx() {
 
         const provider = rpc();
         const net = await provider.getNetwork();
-        if (net.chainId.toString() !== String(CHAIN.id)) throw new Error(`RPC en una red distinta a ${CHAIN.name}.`);
+        if (net.chainId.toString() !== String(CHAIN.id)) throw new Error(`RPC is on a network other than ${CHAIN.name}.`);
 
         if (value > 0n) {
           const bal = await provider.getBalance(address);
-          if (bal < value) throw new Error(`Saldo insuficiente: necesitas más ${CHAIN.symbol} (pide en la faucet).`);
+          if (bal < value) throw new Error(`Insufficient balance: you need more ${CHAIN.symbol} (request some from the faucet).`);
         }
 
         // Simulación: aquí aparecen los reverts con motivo, sin gastar gas.
@@ -78,7 +78,7 @@ export function useLicensingTx() {
           const text = `${e?.reason ?? ""} ${e?.shortMessage ?? ""} ${e?.message ?? ""}`;
           const known = REVERTS.find(([re]) => re.test(text));
           if (known) throw new Error(known[1]);
-          if (e?.code === "CALL_EXCEPTION" || /revert/i.test(text)) throw new Error("El contrato rechazó la transacción.");
+          if (e?.code === "CALL_EXCEPTION" || /revert/i.test(text)) throw new Error("The contract rejected the transaction.");
           // Otro error (RPC caído…): se usa el gas fijo.
         }
 
@@ -104,20 +104,20 @@ export function useLicensingTx() {
             maxPriorityFeePerGas: ethers.toBeHex(maxPriorityFeePerGas),
           },
         ]);
-        if (!txHash) throw new Error("No se recibió hash de transacción.");
+        if (!txHash) throw new Error("No transaction hash received.");
 
         set("confirming", { txHash });
         const receipt = await provider.waitForTransaction(txHash, 1, 120_000);
-        if (!receipt) throw new Error("La transacción no se confirmó en 2 minutos.");
-        if (receipt.status === 0) throw new Error("La transacción fue revertida por el contrato.");
+        if (!receipt) throw new Error("The transaction was not confirmed within 2 minutes.");
+        if (receipt.status === 0) throw new Error("The transaction was reverted by the contract.");
 
         set("done", { txHash });
         return txHash;
       } catch (err: any) {
         console.error("[Licensing] Error:", err);
-        let msg: string = err.reason ?? err.error?.message ?? err.message ?? "Error desconocido";
-        if (msg.toLowerCase().includes("user rejected") || msg.includes("4001")) msg = "Transacción cancelada por el usuario.";
-        else if (msg.toLowerCase().includes("insufficient funds")) msg = `Fondos insuficientes (${CHAIN.symbol}) para el gas.`;
+        let msg: string = err.reason ?? err.error?.message ?? err.message ?? "Unknown error";
+        if (msg.toLowerCase().includes("user rejected") || msg.includes("4001")) msg = "Transaction cancelled by the user.";
+        else if (msg.toLowerCase().includes("insufficient funds")) msg = `Insufficient funds (${CHAIN.symbol}) for gas.`;
         set("error", { error: msg });
         throw new Error(msg);
       }

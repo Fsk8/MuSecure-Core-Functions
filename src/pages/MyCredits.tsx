@@ -10,7 +10,7 @@
  *   las obras en las que fue acreditado.
  *
  * Las participaciones son DECLARADAS por el autor en la metadata que registró
- * on-chain: no mueven fondos ni se ejecutan automáticamente.
+ * on-chain: no mueven fondos ni se MuSecureLicensing uses them to split the payment automatically.
  */
 
 import { useMemo } from "react";
@@ -35,7 +35,7 @@ import { txUrl } from "@/lib/chain";
 const shortAddress = (a: string) => `${a.slice(0, 6)}...${a.slice(-4)}`;
 const pct = (n: number) => Number(n.toFixed(2));
 const formatDate = (unixSeconds: string) =>
-  new Date(Number(unixSeconds) * 1000).toLocaleDateString("es", {
+  new Date(Number(unixSeconds) * 1000).toLocaleDateString("en-US", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -80,7 +80,7 @@ function CreditCard({ entry, index }: { entry: CreditEntry; index: number }) {
               Soulbound
             </Badge>
           ) : (
-            <Badge variant="secondary" className="text-[9px]">Transferible</Badge>
+            <Badge variant="secondary" className="text-[9px]">Transferable</Badge>
           )}
         </div>
 
@@ -95,18 +95,18 @@ function CreditCard({ entry, index }: { entry: CreditEntry; index: number }) {
 
         <button
           onClick={() => goToArtistProfile(author)}
-          title={`Ver perfil de ${author}`}
+          title={`View profile of ${author}`}
           className="mb-4 flex items-center gap-1 self-start font-mono text-[9px] text-zinc-600 transition-colors hover:text-emerald-400"
         >
           <User className="h-2.5 w-2.5" />
-          Creador: {shortAddress(author)}
+          Creator: {shortAddress(author)}
         </button>
 
         {/* Mi participación declarada */}
         <div className="mb-4 rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
           <div className="flex items-end justify-between">
             <p className="font-mono text-[9px] uppercase tracking-widest text-violet-400/70">
-              Tu participación declarada
+              Your declared share
             </p>
             <p className="font-display text-2xl font-bold text-violet-400">{pct(entry.share)}%</p>
           </div>
@@ -121,15 +121,15 @@ function CreditCard({ entry, index }: { entry: CreditEntry; index: number }) {
 
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] text-zinc-500">
             <span className="flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-500" /> Tú {pct(entry.share)}%
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-500" /> You {pct(entry.share)}%
             </span>
             {entry.othersShare > 0 && (
               <span className="flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" /> Otros {pct(entry.othersShare)}%
+                <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" /> Others {pct(entry.othersShare)}%
               </span>
             )}
             <span className="flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/60" /> Creador{" "}
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/60" /> Creator{" "}
               {pct(entry.creatorShare)}%
             </span>
           </div>
@@ -141,7 +141,7 @@ function CreditCard({ entry, index }: { entry: CreditEntry; index: number }) {
             <p className="mt-1 font-display text-sm font-bold text-white">{work.authenticityScore}%</p>
           </div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
-            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Registro</p>
+            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Registered</p>
             <p className="mt-1 font-mono text-[10px] font-bold text-white">{formatDate(work.registeredAt)}</p>
           </div>
         </div>
@@ -151,7 +151,7 @@ function CreditCard({ entry, index }: { entry: CreditEntry; index: number }) {
             <div className="flex items-center justify-center gap-2 rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3">
               <Lock className="h-3 w-3 text-zinc-500" />
               <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
-                Cifrado — solo el creador puede reproducirlo
+                Encrypted — only the creator can play it
               </p>
             </div>
           ) : entry.audioCid ? (
@@ -165,14 +165,14 @@ function CreditCard({ entry, index }: { entry: CreditEntry; index: number }) {
                 <Headphones className="h-4 w-4" />
               </div>
               <div className="flex-1 text-left">
-                <p className="m-0 text-sm font-bold text-white">Escuchar</p>
-                <p className="m-0 font-mono text-[9px] text-zinc-500">Abrir en IPFS</p>
+                <p className="m-0 text-sm font-bold text-white">Listen</p>
+                <p className="m-0 font-mono text-[9px] text-zinc-500">Open on IPFS</p>
               </div>
             </a>
           ) : (
             <div className="rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">
               <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
-                Sin audio disponible
+                No audio available
               </p>
             </div>
           )}
@@ -183,7 +183,7 @@ function CreditCard({ entry, index }: { entry: CreditEntry; index: number }) {
             rel="noreferrer"
             className="flex items-center justify-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-700 no-underline transition-colors hover:text-emerald-500"
           >
-            Registro de la obra <ExternalLink className="h-2 w-2" />
+            Work registration <ExternalLink className="h-2 w-2" />
           </a>
           <a
             href={txUrl(entry.creditTxHash)}
@@ -191,7 +191,7 @@ function CreditCard({ entry, index }: { entry: CreditEntry; index: number }) {
             rel="noreferrer"
             className="flex items-center justify-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-700 no-underline transition-colors hover:text-violet-400"
           >
-            Tu crédito on-chain <ExternalLink className="h-2 w-2" />
+            Your on-chain credit <ExternalLink className="h-2 w-2" />
           </a>
         </div>
       </Card>
@@ -219,9 +219,9 @@ export function MyCredits() {
 
   const header = (
     <div>
-      <h2 className="font-display text-2xl font-bold tracking-tight text-white">Mis Créditos</h2>
+      <h2 className="font-display text-2xl font-bold tracking-tight text-white">My Credits</h2>
       <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-violet-400/70">
-        Co-autorías declaradas · Powered by Privy
+        Declared co-authorships · Powered by Privy
       </p>
     </div>
   );
@@ -244,11 +244,11 @@ export function MyCredits() {
             <Mail className="h-6 w-6 text-violet-400" />
           </div>
           <p className="max-w-md text-sm text-zinc-400">
-            ¿Un productor o co-autor te agregó a una obra? Inicia sesión con el correo que usó: Privy creará tu
-            wallet embebida y aquí verás tus créditos.
+            Did a producer or co-author add you to a work? Sign in with the email they used: Privy will create your
+            embedded wallet and you will see your credits here.
           </p>
           <Button onClick={() => login()} size="lg">
-            Iniciar sesión
+            Sign in
           </Button>
         </Card>
       </div>
@@ -267,7 +267,7 @@ export function MyCredits() {
           className="gap-2 self-start text-zinc-500 hover:text-white sm:self-auto"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          Actualizar
+          Refresh
         </Button>
       </div>
 
@@ -278,7 +278,7 @@ export function MyCredits() {
         <div className="grid gap-5 sm:grid-cols-2">
           <div>
             <p className="mb-2 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-widest text-zinc-600">
-              <CheckCircle2 className="h-3 w-3 text-emerald-500" /> Sesión verificada por Privy
+              <CheckCircle2 className="h-3 w-3 text-emerald-500" /> Session verified by Privy
             </p>
             <div className="flex flex-wrap gap-2">
               {emails.map((e) => (
@@ -291,10 +291,10 @@ export function MyCredits() {
           </div>
           <div>
             <p className="mb-2 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-widest text-zinc-600">
-              <Wallet className="h-3 w-3 text-violet-400" /> Tu wallet embebida (Privy)
+              <Wallet className="h-3 w-3 text-violet-400" /> Your embedded wallet (Privy)
             </p>
             <p className="font-mono text-xs text-white">
-              {address ? address : <span className="text-zinc-500">Aprovisionando…</span>}
+              {address ? address : <span className="text-zinc-500">Provisioning…</span>}
             </p>
           </div>
         </div>
@@ -302,11 +302,11 @@ export function MyCredits() {
         {stats && (
           <div className="mt-6 grid grid-cols-3 gap-3 border-t border-zinc-800 pt-6">
             <div>
-              <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Obras acreditadas</p>
+              <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Credited works</p>
               <p className="mt-1 font-display text-xl font-bold text-white">{stats.count}</p>
             </div>
             <div>
-              <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Participación media</p>
+              <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Average share</p>
               <p className="mt-1 font-display text-xl font-bold text-violet-400">{stats.avgShare}%</p>
             </div>
             <div>
@@ -320,7 +320,7 @@ export function MyCredits() {
       {loading && (
         <div className="flex items-center gap-3 rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3">
           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-violet-400" />
-          <p className="font-mono text-xs font-bold text-violet-400">Consultando tus créditos en el indexador…</p>
+          <p className="font-mono text-xs font-bold text-violet-400">Checking your credits on the indexer…</p>
         </div>
       )}
 
@@ -349,11 +349,11 @@ export function MyCredits() {
               <Users className="h-7 w-7 text-zinc-600" />
             </div>
             <p className="font-mono text-xs uppercase tracking-wider text-zinc-600">
-              Todavía nadie te ha acreditado como co-autor
+              Nobody has credited you as a co-author yet
             </p>
             <p className="max-w-sm text-[11px] leading-relaxed text-zinc-600">
-              Cuando un creador te acredite con tu correo, tu wallet embebida quedará registrada en el contrato
-              y la obra aparecerá aquí.
+              When a creator credits you using your email, your embedded wallet will be registered in the contract
+              and the work will appear here.
             </p>
           </motion.div>
         )
@@ -361,8 +361,8 @@ export function MyCredits() {
 
       <p className="flex items-start justify-center gap-1.5 text-center font-mono text-[9px] leading-relaxed text-zinc-700">
         <Shield className="mt-0.5 h-3 w-3 shrink-0" />
-        Las participaciones las declara el autor y quedan inmutables en el contrato MuSecureCredits. No mueven fondos ni se
-        ejecutan automáticamente.
+        Shares are declared by the author and are immutable in the MuSecureCredits contract. When a license is sold,
+        MuSecureLicensing uses them to split the payment automatically.
       </p>
     </div>
   );

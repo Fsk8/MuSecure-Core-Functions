@@ -34,7 +34,7 @@ interface Props {
   audioFile: File;
   authenticityScore: number;
   catalogReport?: CatalogAuthenticityReport;
-  /** Portada opcional (obras muy originales, sin match fuerte en catálogo). */
+  /** Optional cover art (obras muy originales, sin match fuerte en catálogo). */
   optionalCoverArtEnabled?: boolean;
 }
 
@@ -111,11 +111,11 @@ export function IPFSUploadForm({
       for (const r of collabRows.filter((r) => r.email.trim() || r.share.trim())) {
         const email = r.email.trim().toLowerCase();
         const pct = Number(r.share);
-        if (!EMAIL_RE.test(email)) rowErrors[r.id] = "Correo inválido";
-        else if (myEmail && email === myEmail) rowErrors[r.id] = "Ese es tu propio correo";
-        else if (seen.has(email)) rowErrors[r.id] = "Correo repetido";
+        if (!EMAIL_RE.test(email)) rowErrors[r.id] = "Invalid email";
+        else if (myEmail && email === myEmail) rowErrors[r.id] = "That is your own email";
+        else if (seen.has(email)) rowErrors[r.id] = "Duplicate email";
         else if (!r.share.trim() || !Number.isFinite(pct) || pct <= 0 || pct > 100)
-          rowErrors[r.id] = "El % debe estar entre 0.01 y 100";
+          rowErrors[r.id] = "Percentage must be between 0.01 and 100";
         else {
           seen.add(email);
           const cents = Math.round(pct * 100);
@@ -135,7 +135,7 @@ export function IPFSUploadForm({
       creatorPct: Math.max(0, 10_000 - totalCents) / 100,
       valid: !overLimit && !firstError,
       message: overLimit
-        ? "La suma de participaciones supera el 100%."
+        ? "Total shares exceed 100%."
         : firstError ?? null,
     };
   }, [collabRows, collabEnabled, user]);
@@ -172,18 +172,18 @@ export function IPFSUploadForm({
 
   const handleSubmit = async () => {
     if (isMetadataIncomplete) {
-      setError("Por favor completa el título y el artista");
+      setError("Please fill in the title and artist");
       return;
     }
     // Guard: signMessage no está listo si el iframe de Privy aún no cargó
     if (encrypt && !signMessage) {
-      setError("La wallet aún no está lista. Espera unos segundos e intenta de nuevo.");
+      setError("The wallet isn't ready yet. Wait a few seconds and try again.");
       return;
     }
     if (!collab.valid) {
       // Marca todas las filas como tocadas para que se vean los errores.
       setCollabRows((rows) => rows.map((r) => ({ ...r, touched: true })));
-      setError(collab.message ?? "Revisa los co-autores antes de continuar.");
+      setError(collab.message ?? "Review the co-authors before continuing.");
       return;
     }
     const collabList = collabEnabled ? collab.list : [];
@@ -193,7 +193,7 @@ export function IPFSUploadForm({
     try {
       // ── 1. Subir audio ────────────────────────────────────────────────────
       setStage("uploading-audio");
-      setStageMsg(encrypt ? "Firmando y encriptando audio..." : "Subiendo audio a IPFS...");
+      setStageMsg(encrypt ? "Signing and encrypting audio..." : "Uploading audio to IPFS...");
 
       const audioResult = await lh.uploadAudio(
         audioFile,
@@ -206,7 +206,7 @@ export function IPFSUploadForm({
 
       let artworkCid: string | undefined;
       if (optionalCoverArtEnabled && coverArtFile) {
-        setStageMsg("Subiendo portada a IPFS...");
+        setStageMsg("Uploading cover art to IPFS...");
         const art = await lh.uploadPublic(
           coverArtFile,
           coverArtFile.name || "cover.jpg",
@@ -217,7 +217,7 @@ export function IPFSUploadForm({
 
       // ── 2. Subir metadata ERC-721 JSON ────────────────────────────────────
       setStage("uploading-metadata");
-      setStageMsg("Subiendo metadata a IPFS...");
+      setStageMsg("Uploading metadata to IPFS...");
 
       const mbInfo = hasMBMatch && mbMatch
         ? {
@@ -260,7 +260,7 @@ export function IPFSUploadForm({
       setStageMsg("");
     } catch (e: unknown) {
       console.error("❌ Error en upload:", e);
-      const msg = e instanceof Error ? e.message : "Error desconocido";
+      const msg = e instanceof Error ? e.message : "Unknown error";
       setError(msg);
       setStage("error");
     }
@@ -289,25 +289,25 @@ export function IPFSUploadForm({
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10">
             <CheckCircle2 className="h-8 w-8 text-emerald-500" />
           </div>
-          <h3 className="font-display text-xl font-bold text-white">¡Subida Exitosa a IPFS!</h3>
+          <h3 className="font-display text-xl font-bold text-white">Upload to IPFS Successful!</h3>
 
           {hasMBMatch && (
             <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 px-3 py-1">
               <CheckCircle2 className="mr-1 h-3 w-3" />
-              Verificado en MusicBrainz
+              Verified on MusicBrainz
             </Badge>
           )}
 
           <div className="w-full space-y-1 text-left">
             <p className="font-mono text-[10px] text-zinc-500">Audio: {audioCid.slice(0, 20)}...</p>
-            <p className="font-mono text-[10px] text-emerald-500">Certificado: {metadataCid.slice(0, 20)}...</p>
+            <p className="font-mono text-[10px] text-emerald-500">Certificate: {metadataCid.slice(0, 20)}...</p>
           </div>
 
           {savedCollaborators.length > 0 && (
             <div className="w-full rounded-2xl border border-violet/30 bg-violet-glow p-4 text-left">
               <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
                 <Users className="h-4 w-4 text-violet" />
-                <p className="font-mono text-xs font-bold uppercase text-violet">Créditos & Co-Autores</p>
+                <p className="font-mono text-xs font-bold uppercase text-violet">Credits & Co-Authors</p>
                 <span className="font-mono text-[9px] text-zinc-500">(Powered by Privy)</span>
               </div>
 
@@ -327,7 +327,7 @@ export function IPFSUploadForm({
                   </li>
                 ))}
                 <li className="flex items-center justify-between gap-3 px-3 py-1">
-                  <span className="font-mono text-[11px] text-zinc-500">Tú (creador)</span>
+                  <span className="font-mono text-[11px] text-zinc-500">You (creator)</span>
                   <span className="font-mono text-[10px] text-emerald-500">
                     {Math.max(
                       0,
@@ -339,8 +339,8 @@ export function IPFSUploadForm({
               </ul>
 
               <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
-                Tras registrar la obra podrás acreditarlos on-chain: Privy crea la Embedded Wallet de cada
-                colaborador con su correo y, al iniciar sesión, verán esta obra en Mis Créditos.
+                After registering the work you can credit them on-chain: Privy creates each
+                collaborator's Embedded Wallet from their email and, once they sign in, they will see this work under My Credits.
               </p>
             </div>
           )}
@@ -349,10 +349,10 @@ export function IPFSUploadForm({
             <div className="w-full rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
-                <p className="font-mono text-xs font-bold uppercase text-amber-500">Registro Blockchain Bloqueado</p>
+                <p className="font-mono text-xs font-bold uppercase text-amber-500">Blockchain Registration Blocked</p>
               </div>
               <p className="text-xs text-zinc-400">
-                Esta obra tiene coincidencias significativas. No puede registrarse en blockchain.
+                This work has significant matches. It cannot be registered on the blockchain.
               </p>
             </div>
           ) : (
@@ -378,7 +378,7 @@ export function IPFSUploadForm({
           )}
 
           <Button variant="outline" onClick={handleReset} className="w-full">
-            Subir Otra Obra
+            Upload Another Work
           </Button>
         </Card>
       </motion.div>
@@ -388,8 +388,8 @@ export function IPFSUploadForm({
   return (
     <Card className="space-y-6">
       <div className="border-b border-surface-border pb-4">
-        <h3 className="font-display text-lg font-bold text-white">Configuración</h3>
-        <p className="mt-1 font-mono text-[10px] text-zinc-500">Almacenamiento en Lighthouse (IPFS)</p>
+        <h3 className="font-display text-lg font-bold text-white">Settings</h3>
+        <p className="mt-1 font-mono text-[10px] text-zinc-500">Storage on Lighthouse (IPFS)</p>
       </div>
 
       {hasMBMatch && mbMatch && (
@@ -397,7 +397,7 @@ export function IPFSUploadForm({
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-blue-400" />
             <p className="font-mono text-xs font-bold uppercase text-blue-400">
-              Obra Reconocida en MusicBrainz
+              Work Recognized on MusicBrainz
             </p>
           </div>
           <p className="mt-1 text-[11px] text-zinc-400">
@@ -412,7 +412,7 @@ export function IPFSUploadForm({
               rel="noreferrer"
               className="mt-2 inline-flex items-center gap-1 font-mono text-[9px] text-blue-400/60 hover:text-blue-400 transition-colors"
             >
-              Ver en MusicBrainz <ExternalLink className="h-2.5 w-2.5" />
+              View on MusicBrainz <ExternalLink className="h-2.5 w-2.5" />
             </a>
           )}
         </div>
@@ -424,11 +424,11 @@ export function IPFSUploadForm({
             <div className="mb-2 flex items-center gap-2">
               <ImageIcon className="h-4 w-4 text-emerald-500/80" />
               <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">
-                Portada opcional
+                Optional cover art
               </span>
             </div>
             <p className="mb-3 text-[11px] leading-relaxed text-zinc-500">
-              Obra muy original: puedes subir una imagen (JPG, PNG, WebP) para el certificado y el explorador.
+              Highly original work: you can upload an image (JPG, PNG, WebP) for the certificate and the explorer.
             </p>
             <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-surface-border bg-surface-overlay/50 px-3 py-2.5 transition-colors hover:border-emerald-500/30">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-surface-border bg-black/40">
@@ -440,9 +440,9 @@ export function IPFSUploadForm({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-white">
-                  {coverArtFile ? coverArtFile.name : "Elegir imagen"}
+                  {coverArtFile ? coverArtFile.name : "Choose image"}
                 </p>
-                <p className="font-mono text-[9px] text-zinc-600">Opcional · máx. recomendado 5 MB</p>
+                <p className="font-mono text-[9px] text-zinc-600">Optional · recommended max 5 MB</p>
               </div>
               <input
                 type="file"
@@ -452,7 +452,7 @@ export function IPFSUploadForm({
                   const f = e.target.files?.[0];
                   if (!f) return;
                   if (f.size > 6 * 1024 * 1024) {
-                    setError("La imagen supera 6 MB. Elige un archivo más pequeño.");
+                    setError("The image exceeds 6 MB. Choose a smaller file.");
                     return;
                   }
                   setCoverArtFile(f);
@@ -469,7 +469,7 @@ export function IPFSUploadForm({
                   setCoverArtPreview(null);
                 }}
               >
-                Quitar imagen
+                Remove image
               </button>
             )}
           </div>
@@ -477,13 +477,13 @@ export function IPFSUploadForm({
 
         <div>
           <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-zinc-400">
-            Título {hasMBMatch && <span className="text-blue-400/60">(verificado)</span>}
+            Title {hasMBMatch && <span className="text-blue-400/60">(verified)</span>}
           </label>
           <Input
             type="text"
             value={title}
             onChange={(e) => !hasMBMatch && setTitle(e.target.value)}
-            placeholder="Título de la obra"
+            placeholder="Work title"
             disabled={isUploading || hasMBMatch}
             readOnly={hasMBMatch}
             className={hasMBMatch ? "border-blue-500/30 bg-blue-500/5 cursor-not-allowed opacity-80" : ""}
@@ -492,13 +492,13 @@ export function IPFSUploadForm({
 
         <div>
           <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-zinc-400">
-            Artista {hasMBMatch && <span className="text-blue-400/60">(verificado)</span>}
+            Artist {hasMBMatch && <span className="text-blue-400/60">(verified)</span>}
           </label>
           <Input
             type="text"
             value={artist}
             onChange={(e) => !hasMBMatch && setArtist(e.target.value)}
-            placeholder="Nombre del Artista"
+            placeholder="Artist name"
             disabled={isUploading || hasMBMatch}
             readOnly={hasMBMatch}
             className={hasMBMatch ? "border-blue-500/30 bg-blue-500/5 cursor-not-allowed opacity-80" : ""}
@@ -518,9 +518,9 @@ export function IPFSUploadForm({
           {encrypt ? <Lock className="h-4 w-4 text-violet" /> : <Unlock className="h-4 w-4 text-zinc-500" />}
           <div className="text-left">
             <p className={`text-sm font-bold ${encrypt ? "text-violet" : "text-zinc-400"}`}>
-              {encrypt ? "Encriptado" : "Público"}
+              {encrypt ? "Encrypted" : "Public"}
             </p>
-            <p className="text-[10px] text-zinc-600">Privacidad</p>
+            <p className="text-[10px] text-zinc-600">Privacy</p>
           </div>
         </button>
 
@@ -539,9 +539,9 @@ export function IPFSUploadForm({
             : <Unlink2 className="h-4 w-4 text-zinc-500" />}
           <div className="text-left">
             <p className={`text-sm font-bold ${isSoulbound && !isHighRisk ? "text-emerald-500" : "text-zinc-400"}`}>
-              {isSoulbound ? "Soulbound" : "Transferible"}
+              {isSoulbound ? "Soulbound" : "Transferable"}
             </p>
-            <p className="text-[10px] text-zinc-600">{isHighRisk ? "No disponible" : "Tipo de NFT"}</p>
+            <p className="text-[10px] text-zinc-600">{isHighRisk ? "Unavailable" : "NFT type"}</p>
           </div>
         </button>
       </div>
@@ -552,16 +552,16 @@ export function IPFSUploadForm({
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-violet" />
               <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-300">
-                Co-autores & créditos
+                Co-authors & credits
               </span>
               <Badge variant="secondary" className="text-[8px]">Privy</Badge>
             </div>
-            <span className="font-mono text-[9px] text-zinc-600">Opcional</span>
+            <span className="font-mono text-[9px] text-zinc-600">Optional</span>
           </div>
 
           <p className="text-[11px] leading-relaxed text-zinc-500">
-            Agrega a productores, beatmakers o co-autores por correo. No necesitan tener cuenta: Privy creará su
-            wallet embebida cuando inicien sesión con ese correo.
+            Add producers, beatmakers or co-authors by email. They don't need an account: Privy will create their
+            embedded wallet when they sign in with that email.
           </p>
 
           {collabRows.map((r) => {
@@ -606,7 +606,7 @@ export function IPFSUploadForm({
                     onClick={() => removeRow(r.id)}
                     disabled={isUploading}
                     className="h-10 w-10 shrink-0 text-zinc-500 hover:text-red-400"
-                    aria-label="Quitar colaborador"
+                    aria-label="Remove collaborator"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -619,10 +619,10 @@ export function IPFSUploadForm({
           {collabRows.length > 0 && (
             <div className="flex items-center justify-between font-mono text-[10px]">
               <span className={collab.overLimit ? "text-red-400" : "text-zinc-500"}>
-                Colaboradores: {collab.totalPct}%
+                Collaborators: {collab.totalPct}%
               </span>
               <span className={collab.overLimit ? "text-red-400" : "text-emerald-500"}>
-                {collab.overLimit ? "Supera el 100%" : `Tú conservas: ${collab.creatorPct}%`}
+                {collab.overLimit ? "Exceeds 100%" : `You keep: ${collab.creatorPct}%`}
               </span>
             </div>
           )}
@@ -636,15 +636,15 @@ export function IPFSUploadForm({
             className="w-full"
           >
             <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Agregar colaborador
+            Add collaborator
           </Button>
 
           {collabRows.length > 0 && (
             <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-zinc-600">
               <Info className="mt-0.5 h-3 w-3 shrink-0" />
               {EXPOSE_COLLABORATOR_EMAILS
-                ? "Los correos quedan escritos en la metadata pública de IPFS y no se pueden borrar después. Avisa a tus colaboradores."
-                : "En la metadata pública solo se guarda un hash de cada correo, no el correo en sí."}
+                ? "Emails are written to the public IPFS metadata and cannot be deleted later. Let your collaborators know."
+                : "Only a hash of each email is stored in the public metadata, not the email itself."}
             </p>
           )}
         </div>
@@ -688,18 +688,18 @@ export function IPFSUploadForm({
         ) : encrypt && !signMessage ? (
           <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Conectando wallet...</>
         ) : (
-          <><Upload className="mr-2 h-4 w-4" />Subir a IPFS</>
+          <><Upload className="mr-2 h-4 w-4" />Upload to IPFS</>
         )}
       </Button>
 
       {!isUploading && isMetadataIncomplete && (
         <p className="text-center font-mono text-[9px] text-zinc-500">
-          Completa título y artista para continuar
+          Fill in title and artist to continue
         </p>
       )}
 
       {!isUploading && !collab.valid && collab.message && (
-        <p className="text-center font-mono text-[9px] text-red-400">Co-autores: {collab.message}</p>
+        <p className="text-center font-mono text-[9px] text-red-400">Co-authors: {collab.message}</p>
       )}
     </Card>
   );

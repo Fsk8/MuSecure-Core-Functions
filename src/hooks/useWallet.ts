@@ -58,8 +58,8 @@ async function getProviderWithRetry(wallet: any): Promise<any> {
     }
   }
   throw new Error(
-    "No se pudo conectar con la wallet después de varios intentos. " +
-    "Intenta refrescar la página. " +
+    "Could not connect to the wallet after several attempts. " +
+    "Try refreshing the page. " +
     `(${(lastError as Error)?.message ?? "timeout"})`
   );
 }

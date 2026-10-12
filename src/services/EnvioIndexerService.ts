@@ -7,7 +7,7 @@
 
 function getGraphQLUrl(): string {
   const url = import.meta.env.VITE_ENVIO_GRAPHQL_URL as string;
-  if (!url) throw new Error("Falta VITE_ENVIO_GRAPHQL_URL en las variables de entorno");
+  if (!url) throw new Error("Missing VITE_ENVIO_GRAPHQL_URL in environment variables");
   return url;
 }
 
@@ -49,12 +49,12 @@ async function graphqlRequest<T>(query: string, variables?: Record<string, unkno
   });
 
   if (!res.ok) {
-    throw new Error(`Envio GraphQL respondió ${res.status}`);
+    throw new Error(`Envio GraphQL responded ${res.status}`);
   }
 
   const json = await res.json();
   if (json.errors) {
-    throw new Error(json.errors[0]?.message ?? "Error desconocido de GraphQL");
+    throw new Error(json.errors[0]?.message ?? "Unknown GraphQL error");
   }
   return json.data as T;
 }
@@ -102,7 +102,7 @@ async function queryWorks(
     return data.Work;
   } catch (e) {
     if (!/credits?/i.test((e as Error).message)) throw e;
-    console.warn("[Envio] El indexador desplegado no tiene créditos todavía; se muestran obras sin co-autores.");
+    console.warn("[Envio] The deployed indexer has no credits yet; showing works without co-authors.");
     const data = await graphqlRequest<{ Work: Omit<IndexedWork, "credits">[] }>(build(WORK_FIELDS_BASE), variables);
     return data.Work.map((w) => ({ ...w, credits: [] }));
   }

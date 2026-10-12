@@ -18,7 +18,7 @@ export async function lookupAcoustId(params: {
 }): Promise<AcoustIdLookupJson> {
 
   if (!params.client || params.client === "undefined") {
-    throw new Error("AcoustID Client Key no configurada (VITE_ACOUSTID_CLIENT_KEY)");
+    throw new Error("AcoustID client key not configured (VITE_ACOUSTID_CLIENT_KEY)");
   }
 
   console.log("[AcoustID] Enviando lookup:", {

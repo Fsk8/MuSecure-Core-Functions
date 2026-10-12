@@ -43,7 +43,7 @@ export function useIPFSUpload() {
       setProgress(prog(
         input.encrypt ? "encrypting" : "uploading-audio",
         5,
-        input.encrypt ? "Firmando con wallet y encriptando…" : "Subiendo audio a IPFS…"
+        input.encrypt ? "Signing with wallet and encrypting…" : "Uploading audio to IPFS…"
       ));
 
       const audioResult = await lh.uploadAudio(
@@ -51,20 +51,20 @@ export function useIPFSUpload() {
         input.ownerAddress,
         input.encrypt,
         input.signMessage,
-        (pct) => setProgress(prog("uploading-audio", 5 + pct * 0.4, "Subiendo audio…"))
+        (pct) => setProgress(prog("uploading-audio", 5 + pct * 0.4, "Uploading audio…"))
       );
 
       if (abortRef.current) return;
-      setProgress(prog("uploading-audio", 48, "Audio en IPFS ✓"));
+      setProgress(prog("uploading-audio", 48, "Audio on IPFS ✓"));
 
       // ── 2. Artwork ────────────────────────────────────────────────────
       let artworkCid: string | undefined;
       if (input.artworkFile) {
-        setProgress(prog("uploading-artwork", 52, "Subiendo artwork…"));
+        setProgress(prog("uploading-artwork", 52, "Uploading artwork…"));
         const artResult = await lh.uploadPublic(
           input.artworkFile,
           input.artworkFile.name,
-          (pct) => setProgress(prog("uploading-artwork", 52 + pct * 0.15, "Subiendo artwork…"))
+          (pct) => setProgress(prog("uploading-artwork", 52 + pct * 0.15, "Uploading artwork…"))
         );
         artworkCid = artResult.cid;
       }
@@ -72,7 +72,7 @@ export function useIPFSUpload() {
       if (abortRef.current) return;
 
       // ── 3. Metadata JSON ──────────────────────────────────────────────
-      setProgress(prog("uploading-metadata", 72, "Construyendo metadata…"));
+      setProgress(prog("uploading-metadata", 72, "Building metadata…"));
 
       const metadata: MuSecureMetadata = {
         schemaVersion: "1.0",
@@ -125,11 +125,11 @@ export function useIPFSUpload() {
         }
       }
 
-      setProgress(prog("uploading-metadata", 84, "Subiendo metadata a IPFS…"));
+      setProgress(prog("uploading-metadata", 84, "Uploading metadata to IPFS…"));
       const safeTitle = input.title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
       const metaResult = await lh.uploadJSON(metadata, `musecure_${safeTitle}_metadata.json`);
 
-      setProgress(prog("done", 100, "¡Listo!"));
+      setProgress(prog("done", 100, "Done!"));
 
       const uploadResult: IPFSUploadResult = {
         metadataCid: metaResult.cid,
@@ -154,7 +154,7 @@ export function useIPFSUpload() {
       setResult(uploadResult);
       return uploadResult;
     } catch (err) {
-      const msg = (err as Error).message ?? "Error en la subida";
+      const msg = (err as Error).message ?? "Upload error";
       setError(msg);
       setProgress(prog("error", 0, msg));
       throw err;

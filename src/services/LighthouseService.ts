@@ -10,7 +10,7 @@
 
 function getApiKey(): string {
   const key = import.meta.env.VITE_LIGHTHOUSE_API_KEY as string;
-  if (!key) throw new Error("Falta VITE_LIGHTHOUSE_API_KEY en las variables de entorno");
+  if (!key) throw new Error("Missing VITE_LIGHTHOUSE_API_KEY in environment variables");
   return key;
 }
 
@@ -92,12 +92,12 @@ async function buildCollaborators(inputs: CollaboratorInput[] = []): Promise<Col
   for (const c of inputs) {
     const email = c.email.trim().toLowerCase();
     if (!email) continue;
-    if (seen.has(email)) throw new Error(`Colaborador duplicado: ${email}`);
+    if (seen.has(email)) throw new Error(`Duplicate collaborator: ${email}`);
     seen.add(email);
 
     const cents = Math.round(Number(c.sharePercentage) * 100);
     if (!Number.isFinite(cents) || cents <= 0 || cents > 10_000) {
-      throw new Error(`Porcentaje inválido para ${email}`);
+      throw new Error(`Invalid percentage for ${email}`);
     }
     totalCents += cents;
 
@@ -110,7 +110,7 @@ async function buildCollaborators(inputs: CollaboratorInput[] = []): Promise<Col
   }
 
   if (totalCents > 10_000) {
-    throw new Error("La suma de participaciones de los colaboradores supera el 100%.");
+    throw new Error("Total collaborator shares exceed 100%.");
   }
   return out;
 }
@@ -149,7 +149,7 @@ export class LighthouseService {
       return null;
     };
     const cid = tryExtract(data);
-    if (!cid) throw new Error("Lighthouse no devolvió un CID válido.");
+    if (!cid) throw new Error("Lighthouse did not return a valid CID.");
     return cid;
   }
 
@@ -167,18 +167,18 @@ export class LighthouseService {
 
     if (encrypt) {
       if (typeof signMessage !== "function") {
-        throw new Error("Se requiere firma para encriptar.");
+        throw new Error("A signature is required to encrypt.");
       }
       const authRes = await lh.getAuthMessage(ownerAddress);
       const message: string | undefined = (authRes as any)?.data?.message;
-      if (!message) throw new Error("No se pudo obtener mensaje de autenticación de Lighthouse.");
+      if (!message) throw new Error("Could not get the Lighthouse authentication message.");
       const signature = await signMessage(message);
 
       let response: any;
       try {
         response = await lh.uploadEncrypted([file], apiKey, ownerAddress, signature);
       } catch (e) {
-        throw new Error(`Error encriptando: ${(e as Error)?.message}`);
+        throw new Error(`Encryption error: ${(e as Error)?.message}`);
       }
       const cid = LighthouseService.extractCid(response?.data ?? response);
       return { cid, url: LighthouseService.gatewayUrl(cid), encrypted: true };
@@ -207,7 +207,7 @@ export class LighthouseService {
           : undefined,
       });
     } catch (e) {
-      throw new Error(`Error en carga pública: ${(e as Error)?.message}`);
+      throw new Error(`Public upload error: ${(e as Error)?.message}`);
     }
     const cid = LighthouseService.extractCid(response?.data ?? response);
     return { cid, url: LighthouseService.gatewayUrl(cid), encrypted: false };
@@ -264,7 +264,7 @@ export class LighthouseService {
 
       const nftMetadata: NFTMetadata = {
         name: title,
-        description: `Certificado de Autenticidad MuSecure para la obra "${title}" de ${artist}.`,
+        description: `MuSecure Certificate of Authenticity for the work "${title}" by ${artist}.`,
         image: imageUri,
         animation_url: isEncrypted ? "" : `ipfs://${audioCid}`,
         attributes,
@@ -288,7 +288,7 @@ export class LighthouseService {
       const mCid = LighthouseService.extractCid(response?.data ?? response);
       
       if (!mCid) {
-        throw new Error("Error al obtener CID de metadata");
+        throw new Error("Could not get the metadata CID");
       }
       
       console.log('✅ Metadata pública subida:', mCid);

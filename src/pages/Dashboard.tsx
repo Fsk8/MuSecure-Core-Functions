@@ -28,7 +28,7 @@ const REGISTRY_ABI = [
   "event WorkRegistered(address indexed author, bytes32 indexed fingerprintHash, string ipfsCid, uint256 authenticityScore, uint8 riskLevel, uint256 tokenId, uint256 timestamp)",
 ];
 
-const RISK_LABEL = ["Bajo Riesgo", "Riesgo Medio", "Alto Riesgo", "Bloqueado"];
+const RISK_LABEL = ["Low Risk", "Medium Risk", "High Risk", "Blocked"];
 
 // Bloque de despliegue del Registry en la red activa (Monad testnet: 69323359).
 const DEPLOY_BLOCK = Number(import.meta.env.VITE_DEPLOY_BLOCK ?? 69323359);
@@ -77,7 +77,7 @@ function indexedToWorkItem(w: IndexedWork): WorkItem {
     timestamp: Number(w.registeredAt) * 1000,
     txHash: w.txHash,
     author: w.author.id,
-    title: `Obra #${Number(w.tokenId)}`,
+    title: `Work #${Number(w.tokenId)}`,
     artist: "...",
     isEncrypted: false,
     metaLoading: true,
@@ -110,17 +110,17 @@ async function fetchWorksFromRpc(authorAddress: string | null): Promise<WorkItem
           timestamp: Number(timestamp) * 1000,
           txHash: log.transactionHash,
           author,
-          title: `Obra #${Number(tokenId)}`,
+          title: `Work #${Number(tokenId)}`,
           artist: "...",
           isEncrypted: false,
           metaLoading: true,
         };
       });
     } catch {
-      console.warn(`RPC Falló: ${url}`);
+      console.warn(`RPC failed: ${url}`);
     }
   }
-  throw new Error("Todos los RPC fallaron");
+  throw new Error("All RPC endpoints failed");
 }
 
 export function Dashboard() {
@@ -160,7 +160,7 @@ export function Dashboard() {
 
       // Los créditos solo existen en el indexador: sin Envio no hay fallback por RPC.
       if (showCollabs) {
-        setFetchError("Las colaboraciones requieren el indexador Envio, que no responde ahora.");
+        setFetchError("Collaborations require the Envio indexer, which is not responding right now.");
         setLoading(false);
         setRefreshing(false);
         return;
@@ -171,7 +171,7 @@ export function Dashboard() {
         items = await fetchWorksFromRpc(showOnlyMine ? address! : null);
         setDataSource("rpc");
       } catch {
-        setFetchError("Error de red. Prueba sincronizar de nuevo.");
+        setFetchError("Network error. Try syncing again.");
         setLoading(false);
         setRefreshing(false);
         return;
@@ -250,7 +250,7 @@ export function Dashboard() {
         });
       });
     } catch (e) {
-      setFetchError("Error al procesar registros.");
+      setFetchError("Error processing records.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -289,7 +289,7 @@ export function Dashboard() {
     return (
       <div className="flex flex-col items-center gap-4 py-24 border border-dashed border-emerald-500/20 rounded-[3rem] mt-4 bg-zinc-900/10">
         <Music className="h-10 w-10 text-zinc-700" />
-        <Button onClick={login} className="rounded-2xl">Conectar Wallet</Button>
+        <Button onClick={login} className="rounded-2xl">Connect Wallet</Button>
       </div>
     );
   }
@@ -299,7 +299,7 @@ export function Dashboard() {
       <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-display text-2xl font-bold text-white tracking-tight">
-            {showCollabs ? "Mis Colaboraciones" : showOnlyMine ? "Mis Protecciones" : "Explorar Obras"}
+            {showCollabs ? "My Collaborations" : showOnlyMine ? "My Protections" : "Explore Works"}
           </h2>
           <p className="font-mono text-[10px] uppercase tracking-widest text-emerald-500/60 mt-1">
              {CHAIN.name} Ledger{dataSource === "envio" && " · ⚡ Indexed by Envio"}
@@ -333,10 +333,10 @@ export function Dashboard() {
             size="sm"
             onClick={() => setShowCollabs((v) => !v)}
             className="h-8 gap-1.5 rounded-xl px-3 font-mono text-[10px]"
-            title="Obras de otros autores donde figuras como co-autor"
+            title="Works by other authors where you are listed as a co-author"
           >
             <Users className={`h-3.5 w-3.5 ${showCollabs ? "text-violet-400" : "text-zinc-500"}`} />
-            Colaboraciones
+            Collaborations
           </Button>
 
           <div className="h-6 w-[1px] bg-zinc-800"></div>
@@ -360,7 +360,7 @@ export function Dashboard() {
             type="text"
             value={artistQuery}
             onChange={(e) => setArtistQuery(e.target.value)}
-            placeholder="Filtrar por wallet del artista (0x... o los últimos caracteres)"
+            placeholder="Filter by artist wallet (0x... or last characters)"
             className="w-full rounded-2xl border border-zinc-800 bg-zinc-900/50 py-3 pl-10 pr-10 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-emerald-500/50 focus:outline-none"
           />
           {artistQuery && (
@@ -373,16 +373,16 @@ export function Dashboard() {
           )}
           {artistQuery && (
             <p className="mt-2 font-mono text-[10px] text-zinc-500">
-              {filteredWorks.length} obra{filteredWorks.length !== 1 ? "s" : ""}
+              {filteredWorks.length} work{filteredWorks.length !== 1 ? "s" : ""}
               {filteredWorks.length > 0 && (
                 <>
-                  {" "}· Artista: <span className="text-emerald-400">{shortAddress(filteredWorks[0].author)}</span>
+                  {" "}· Artist: <span className="text-emerald-400">{shortAddress(filteredWorks[0].author)}</span>
                   {" "}·{" "}
                   <button
                     onClick={() => goToArtistProfile(filteredWorks[0].author)}
                     className="text-violet-400 hover:underline"
                   >
-                    Ver perfil completo →
+                    View full profile →
                   </button>
                 </>
               )}
@@ -399,7 +399,7 @@ export function Dashboard() {
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4">
             <div className="flex items-center gap-2 text-zinc-600">
               <Shield className="h-3 w-3" />
-              <p className="font-mono text-[9px] uppercase tracking-widest">Obras Registradas</p>
+              <p className="font-mono text-[9px] uppercase tracking-widest">Registered Works</p>
             </div>
             <p className="mt-1 font-display text-2xl font-bold text-white">{stats.totalWorks}</p>
           </div>
@@ -407,7 +407,7 @@ export function Dashboard() {
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4">
             <div className="flex items-center gap-2 text-zinc-600">
               <Users className="h-3 w-3" />
-              <p className="font-mono text-[9px] uppercase tracking-widest">Autores Únicos</p>
+              <p className="font-mono text-[9px] uppercase tracking-widest">Unique Authors</p>
             </div>
             <p className="mt-1 font-display text-2xl font-bold text-white">{stats.uniqueAuthors}</p>
           </div>
@@ -415,7 +415,7 @@ export function Dashboard() {
           <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
             <div className="flex items-center gap-2 text-emerald-400/70">
               <BarChart3 className="h-3 w-3" />
-              <p className="font-mono text-[9px] uppercase tracking-widest">Score Promedio</p>
+              <p className="font-mono text-[9px] uppercase tracking-widest">Avg. Score</p>
             </div>
             <p className="mt-1 font-display text-2xl font-bold text-emerald-400">{stats.avgAuthenticityScore}%</p>
           </div>
@@ -429,11 +429,11 @@ export function Dashboard() {
           </div>
 
           <div className="col-span-2 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4 sm:col-span-4">
-            <p className="mb-2 font-mono text-[9px] uppercase tracking-widest text-zinc-600">Por Nivel de Riesgo (obras registradas exitosamente)</p>
+            <p className="mb-2 font-mono text-[9px] uppercase tracking-widest text-zinc-600">By Risk Level (successfully registered works)</p>
             <div className="flex items-center gap-4 font-mono text-[10px]">
-              <span className="text-emerald-400">Bajo {stats.riskBreakdown.low}</span>
-              <span className="text-amber-400">Medio {stats.riskBreakdown.medium}</span>
-              <span className="text-red-400">Alto {stats.riskBreakdown.high}</span>
+              <span className="text-emerald-400">Low {stats.riskBreakdown.low}</span>
+              <span className="text-amber-400">Medium {stats.riskBreakdown.medium}</span>
+              <span className="text-red-400">High {stats.riskBreakdown.high}</span>
             </div>
           </div>
         </div>
@@ -453,7 +453,7 @@ export function Dashboard() {
         <div className="flex flex-col items-center gap-3 rounded-[2.5rem] border border-dashed border-zinc-800 py-20">
           <Search className="h-8 w-8 text-zinc-700" />
           <p className="font-mono text-xs uppercase tracking-wider text-zinc-600">
-            Ningún artista coincide con "{artistQuery}"
+            No artist matches "{artistQuery}"
           </p>
         </div>
       ) : (
@@ -472,7 +472,7 @@ export function Dashboard() {
                   
                   {address && item.author.toLowerCase() === address.toLowerCase() && (
                     <div className="absolute top-0 right-0 p-2">
-                       <Badge variant="success" className="text-[8px] h-4 px-1 opacity-50">TÚ</Badge>
+                       <Badge variant="success" className="text-[8px] h-4 px-1 opacity-50">YOU</Badge>
                     </div>
                   )}
 
@@ -493,7 +493,7 @@ export function Dashboard() {
                         {(!showOnlyMine || showCollabs) && (
                           <button
                             onClick={() => goToArtistProfile(item.author)}
-                            title={`Ver perfil de ${item.author}`}
+                            title={`View profile of ${item.author}`}
                             className="mb-6 flex items-center gap-1 font-mono text-[9px] text-zinc-600 hover:text-emerald-400 transition-colors"
                           >
                             <User className="h-2.5 w-2.5" /> {shortAddress(item.author)}
@@ -510,8 +510,8 @@ export function Dashboard() {
                         <p className="mt-1 font-display text-sm font-bold text-white">{item.authenticityScore}%</p>
                       </div>
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
-                        <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Visibilidad</p>
-                        <p className="mt-1 font-display text-sm font-bold text-emerald-500/80">{item.isEncrypted ? "Cifrado" : "Público"}</p>
+                        <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Visibility</p>
+                        <p className="mt-1 font-display text-sm font-bold text-emerald-500/80">{item.isEncrypted ? "Encrypted" : "Public"}</p>
                       </div>
                     </div>
                   </div>
@@ -523,7 +523,7 @@ export function Dashboard() {
                         !item.audioCid ? (
                           <div className="w-full rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">
                             <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
-                              Metadata antigua — audio no vinculado
+                              Legacy metadata — audio not linked
                             </p>
                           </div>
                         ) : address && item.author.toLowerCase() === address.toLowerCase() ? (
@@ -531,25 +531,25 @@ export function Dashboard() {
                             <EncryptedAudioPlayer cid={item.audioCid} ownerAddress={address} signMessage={signMessage} />
                           ) : (
                             <Button onClick={login} className="w-full rounded-2xl bg-zinc-800 border-zinc-700 hover:bg-zinc-700" variant="secondary">
-                              <Shield className="h-3.5 w-3.5 mr-2" /> Desbloquear
+                              <Shield className="h-3.5 w-3.5 mr-2" /> Unlock
                             </Button>
                           )
                         ) : (
                           <div className="w-full rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">
                             <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
-                              Cifrado — solo el propietario puede reproducirlo
+                              Encrypted — only the owner can play it
                             </p>
                           </div>
                         )
                       ) : item.audioCid ? (
                         <a href={LighthouseService.audioUrl(item.audioCid)} target="_blank" className="flex w-full items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 hover:bg-emerald-500/10 transition-colors group/btn no-underline">
                           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-black shadow-lg shadow-emerald-500/10 group-hover/btn:scale-105 transition-transform"><Headphones className="h-4 w-4" /></div>
-                          <div className="flex-1 text-left"><p className="text-sm font-bold text-white m-0">Escuchar</p><p className="font-mono text-[9px] text-zinc-500 m-0">Open IPFS</p></div>
+                          <div className="flex-1 text-left"><p className="text-sm font-bold text-white m-0">Listen</p><p className="font-mono text-[9px] text-zinc-500 m-0">Open IPFS</p></div>
                           <ExternalLink className="h-3.5 w-3.5 text-zinc-600 group-hover/btn:text-emerald-500" />
                         </a>
                       ) : (
                         <div className="text-center py-4 border border-zinc-800 rounded-2xl opacity-40">
-                          <p className="font-mono text-[9px] uppercase tracking-widest">Sin Audio Registrado</p>
+                          <p className="font-mono text-[9px] uppercase tracking-widest">No Audio Registered</p>
                         </div>
                       )
                     )}

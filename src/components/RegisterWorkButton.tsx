@@ -20,9 +20,9 @@ const RISK_CONFIG: Record<
   number,
   { label: string; variant: "success" | "warning" | "danger" }
 > = {
-  0: { label: "Sin coincidencias — original", variant: "success" },
-  1: { label: "Riesgo medio — coincidencias parciales", variant: "warning" },
-  2: { label: "Alta coincidencia — bloqueado", variant: "danger" },
+  0: { label: "No matches — original", variant: "success" },
+  1: { label: "Medium risk — partial matches", variant: "warning" },
+  2: { label: "High match — blocked", variant: "danger" },
 };
 
 export function RegisterWorkButton({
@@ -74,10 +74,10 @@ export function RegisterWorkButton({
             </div>
             <div>
               <h4 className="font-display text-lg font-bold text-white">
-                {title || "Obra"} Protegida
+                {title || "Work"} Protected
               </h4>
               <p className="font-mono text-[11px] text-zinc-500">
-                Certificado registrado en {CHAIN.name}
+                Certificate registered on {CHAIN.name}
               </p>
             </div>
             {state.txHash && (
@@ -87,21 +87,21 @@ export function RegisterWorkButton({
                 className="h-8 rounded-full border-zinc-800 bg-zinc-900/50 px-4 text-[10px] font-medium text-zinc-400"
                 onClick={() => window.open(txUrl(state.txHash!), "_blank")}
               >
-                Ver en el explorador <ExternalLink className="ml-2 h-3 w-3" />
+                View on explorer <ExternalLink className="ml-2 h-3 w-3" />
               </Button>
             )}
           </motion.div>
         ) : (
           <motion.div key="action" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
             <div className="flex items-center justify-between px-1">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Estado de Análisis</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Analysis Status</span>
               <Badge variant={risk.variant}>{risk.label}</Badge>
             </div>
 
             {isBlocked ? (
               <div className="flex items-center justify-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/5 p-5">
                 <XCircle className="h-4 w-4 text-red-400" />
-                <p className="font-mono text-[11px] font-bold uppercase text-red-400">Registro bloqueado</p>
+                <p className="font-mono text-[11px] font-bold uppercase text-red-400">Registration blocked</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -109,7 +109,7 @@ export function RegisterWorkButton({
                 {!isWalletReady && (
                   <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-center">
                     <p className="font-mono text-[10px] text-amber-400">
-                      ⏳ Esperando conexión con la wallet...
+                      ⏳ Waiting for wallet connection...
                     </p>
                   </div>
                 )}
@@ -123,17 +123,17 @@ export function RegisterWorkButton({
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {state.message || "Procesando..."}
+                      {state.message || "Processing..."}
                     </>
                   ) : !isWalletReady ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Conectando wallet...
+                      Connecting wallet...
                     </>
                   ) : (
                     <>
                       <Shield className="mr-2 h-4 w-4" />
-                      Registrar Certificado de Obra
+                      Register Work Certificate
                     </>
                   )}
                 </Button>
@@ -151,7 +151,7 @@ export function RegisterWorkButton({
                     ) : (
                       <Droplets className="mr-2 h-3 w-3" />
                     )}
-                    ¿Sin fondos? Pedir {CHAIN.symbol} de prueba
+                    Out of funds? Request test {CHAIN.symbol}
                   </Button>
                   
                   {airdropMessage && (

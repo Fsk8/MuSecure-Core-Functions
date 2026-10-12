@@ -96,7 +96,7 @@ async function fetchMetadataJSON(ipfsCid: string): Promise<any> {
       lastError = e;
     }
   }
-  throw lastError ?? new Error(`No se pudo obtener metadata para CID ${ipfsCid}`);
+  throw lastError ?? new Error(`Could not fetch metadata for CID ${ipfsCid}`);
 }
 
 async function enrichWork(work: IndexedWork): Promise<WorkWithMetadata> {

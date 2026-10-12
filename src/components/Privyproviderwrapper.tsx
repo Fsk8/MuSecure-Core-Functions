@@ -7,10 +7,10 @@ interface Props {
 
 export function PrivyProviderWrapper({ children }: Props) {
   const appId = import.meta.env.VITE_PRIVY_APP_ID as string;
-  if (!appId) throw new Error("Falta VITE_PRIVY_APP_ID en .env");
+  if (!appId) throw new Error("Missing VITE_PRIVY_APP_ID in .env");
 
   const clientId = import.meta.env.VITE_PRIVY_CLIENT_ID as string;
-  if (!clientId) throw new Error("Falta VITE_PRIVY_CLIENT_ID en .env");
+  if (!clientId) throw new Error("Missing VITE_PRIVY_CLIENT_ID in .env");
 
   const walletConnectProjectId =
     (import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined)?.trim() || undefined;

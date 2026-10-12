@@ -23,11 +23,11 @@ export function useEarnings(address: string | null | undefined) {
       setIndexerDown(null);
     } else {
       const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
-      console.error("[Earnings] Envio falló:", s.reason);
+      console.error("[Earnings] Envio failed:", s.reason);
       setIndexerDown(msg);
     }
     if (c.status === "fulfilled") setClaimable(c.value);
-    else setError("No se pudo leer tu saldo on-chain.");
+    else setError("Could not read your on-chain balance.");
     setLoading(false);
   }, [address]);
 

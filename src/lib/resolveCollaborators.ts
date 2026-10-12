@@ -30,7 +30,7 @@ export async function resolveCollaborators(
   emails: string[],
 ): Promise<ResolveResult> {
   if (!idToken) {
-    throw new Error("No hay identity token de Privy. Cierra sesión, vuelve a entrar e inténtalo de nuevo.");
+    throw new Error("No Privy identity token found. Sign out, sign back in and try again.");
   }
 
   const res = await fetch("/api/resolve-collaborators", {
@@ -46,7 +46,7 @@ export async function resolveCollaborators(
   } catch {
     // Típico cuando /api no existe (pnpm dev de Vite) o un rewrite de SPA captura la ruta.
     throw new Error(
-      `El endpoint no devolvió JSON (status ${res.status}). ¿Estás usando "vercel dev" o un deploy con la función publicada?`,
+      `The endpoint did not return JSON (status ${res.status}). Are you using "vercel dev" or a deployment with the function published?`,
     );
   }
 

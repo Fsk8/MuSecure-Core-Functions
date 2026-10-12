@@ -45,7 +45,7 @@ import {
 import { CHAIN, txUrl } from "@/lib/chain";
 
 const POLL_MS = 15_000;
-const RISK_LABEL = ["Bajo Riesgo", "Riesgo Medio", "Alto Riesgo", "Bloqueado"];
+const RISK_LABEL = ["Low Risk", "Medium Risk", "High Risk", "Blocked"];
 
 // CIDs de audio problemáticos que fuerzan descarga (curados previamente).
 const EXCLUDED_CIDS = new Set([
@@ -126,7 +126,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const formatDate = (ms: number) =>
   ms
-    ? new Date(ms).toLocaleDateString("es", { day: "2-digit", month: "short", year: "numeric" })
+    ? new Date(ms).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" })
     : "—";
 
 const isMobile = () =>
@@ -154,7 +154,7 @@ function indexedToWork(w: IndexedWork): ExplorerWork {
     txHash: w.txHash,
     soulbound: !!w.certificate?.soulbound,
     credits: w.credits ?? [],
-    title: `Obra #${Number(w.tokenId)}`,
+    title: `Work #${Number(w.tokenId)}`,
     artist: "...",
     audioCid: "",
     isEncrypted: false,
@@ -323,7 +323,7 @@ function applyMetadata(w: ExplorerWork, meta: any): ExplorerWork {
   return {
     ...w,
     title: meta?.title || meta?.name || w.title,
-    artist: String(meta?.artist || attr("Artista", "Artist") || "Artista desconocido"),
+    artist: String(meta?.artist || attr("Artista", "Artist") || "Unknown artist"),
     audioCid,
     isEncrypted,
     mbInfo,
@@ -394,7 +394,7 @@ async function loadOffchainCandidates(): Promise<ExplorerWork[]> {
       source: "ipfs",
       metadataCid: cid,
       registeredAt: normalizeTs(f.createdAt ?? f.lastUpdate, String(f.fileName ?? "")),
-      title: String(f.fileName ?? "Sin título"),
+      title: String(f.fileName ?? "Untitled"),
       artist: "—",
       audioCid: "",
       isEncrypted: false,
@@ -509,8 +509,8 @@ function AudioLink({ audioCid, isVerified }: { audioCid: string; isVerified: boo
         <Headphones className="h-4 w-4 text-black" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-white">Escuchar</p>
-        <p className="truncate font-mono text-[10px] text-zinc-500">Abrir en IPFS Gateway</p>
+        <p className="text-sm font-semibold text-white">Listen</p>
+        <p className="truncate font-mono text-[10px] text-zinc-500">Open in IPFS Gateway</p>
       </div>
       <ExternalLink
         className={`h-3.5 w-3.5 shrink-0 transition-colors ${
@@ -524,11 +524,11 @@ function AudioLink({ audioCid, isVerified }: { audioCid: string; isVerified: boo
 }
 
 const FILTERS: { id: Filter; label: string }[] = [
-  { id: "all", label: "Todas" },
+  { id: "all", label: "All" },
   { id: "onchain", label: "On-chain" },
   { id: "mb", label: "MB Verified" },
-  { id: "ipfs", label: "Solo IPFS" },
-  { id: "collab", label: "Mis colaboraciones" },
+  { id: "ipfs", label: "IPFS only" },
+  { id: "collab", label: "My collaborations" },
 ];
 
 /* ─────────────────────────── Explorer ─────────────────────────── */
@@ -618,7 +618,7 @@ export const Explorer = () => {
           .catch((e) => console.warn("[Explorer] Stats no disponibles:", e));
       } catch (e) {
         console.warn("[Explorer] Envio no disponible:", e);
-        setError("No se pudo conectar con el indexador Envio. Reintentando automáticamente…");
+        setError("Could not reach the Envio indexer. Retrying automatically…");
       } finally {
         setLoading(false);
       }
@@ -633,7 +633,7 @@ export const Explorer = () => {
     } catch (e) {
       console.warn("[Explorer] Lighthouse no disponible:", e);
       setLhError(
-        "No se pudo leer Lighthouse: solo se muestran las obras on-chain (sin MB Verified ni Solo IPFS).",
+        "Could not read Lighthouse: only on-chain works are shown (no MB Verified or IPFS-only).",
       );
     } finally {
       setLhLoaded(true);
@@ -754,7 +754,7 @@ export const Explorer = () => {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-display text-2xl font-bold tracking-tight text-white">
-            Explorar Obras
+            Explore Works
           </h2>
           <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-emerald-500/60">
             {CHAIN.name} Ledger · ⚡ Indexed by Envio
@@ -767,7 +767,7 @@ export const Explorer = () => {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
             </span>
-            En vivo{lastUpdated && ` · ${lastUpdated.toLocaleTimeString("es")}`}
+            Live{lastUpdated && ` · ${lastUpdated.toLocaleTimeString("en-US")}`}
           </span>
           <Button
             variant="ghost"
@@ -794,14 +794,14 @@ export const Explorer = () => {
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4">
             <div className="flex items-center gap-2 text-zinc-600">
               <Users className="h-3 w-3" />
-              <p className="font-mono text-[9px] uppercase tracking-widest">Autores</p>
+              <p className="font-mono text-[9px] uppercase tracking-widest">Authors</p>
             </div>
             <p className="mt-1 font-display text-2xl font-bold text-white">{stats.uniqueAuthors}</p>
           </div>
           <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
             <div className="flex items-center gap-2 text-emerald-400/70">
               <BarChart3 className="h-3 w-3" />
-              <p className="font-mono text-[9px] uppercase tracking-widest">Score Promedio</p>
+              <p className="font-mono text-[9px] uppercase tracking-widest">Avg. Score</p>
             </div>
             <p className="mt-1 font-display text-2xl font-bold text-emerald-400">
               {stats.avgAuthenticityScore}%
@@ -827,7 +827,7 @@ export const Explorer = () => {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por título, artista o wallet"
+            placeholder="Search by title, artist or wallet"
             className="w-full rounded-2xl border border-zinc-800 bg-zinc-900/50 py-3 pl-10 pr-10 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-emerald-500/50 focus:outline-none"
           />
           {query && (
@@ -856,7 +856,7 @@ export const Explorer = () => {
           ))}
           {!lhLoaded && (
             <span className="ml-1 flex items-center gap-1.5 font-mono text-[10px] text-zinc-600">
-              <Loader2 className="h-3 w-3 animate-spin" /> Buscando obras en IPFS…
+              <Loader2 className="h-3 w-3 animate-spin" /> Searching IPFS for works…
             </span>
           )}
         </div>
@@ -891,8 +891,8 @@ export const Explorer = () => {
           </div>
           <p className="font-mono text-xs uppercase tracking-wider text-zinc-600">
             {query || filter !== "all"
-              ? "Ninguna obra coincide con el filtro"
-              : "Todavía no hay obras registradas"}
+              ? "No works match the filter"
+              : "No works registered yet"}
           </p>
         </motion.div>
       ) : (
@@ -929,9 +929,9 @@ export const Explorer = () => {
                         {!work.metaLoading && (
                           <Badge variant={work.isEncrypted ? "default" : "secondary"}>
                             {work.isEncrypted ? (
-                              <><Lock className="mr-1 h-2.5 w-2.5" />Privado</>
+                              <><Lock className="mr-1 h-2.5 w-2.5" />Private</>
                             ) : (
-                              <><Globe className="mr-1 h-2.5 w-2.5" />Público</>
+                              <><Globe className="mr-1 h-2.5 w-2.5" />Public</>
                             )}
                           </Badge>
                         )}
@@ -957,9 +957,9 @@ export const Explorer = () => {
                         ) : (
                           <Badge
                             className="border-amber-500/30 bg-amber-500/20 text-amber-400"
-                            title="Ninguna obra indexada por Envio apunta a esta metadata"
+                            title="No work indexed by Envio points to this metadata"
                           >
-                            Solo IPFS
+                            IPFS only
                           </Badge>
                         ))}
                     </div>
@@ -995,14 +995,14 @@ export const Explorer = () => {
                     {isOnchain && work.author && (
                       <button
                         onClick={() => goToArtistProfile(work.author!)}
-                        title={`Ver perfil de ${work.author}`}
+                        title={`View profile of ${work.author}`}
                         className="mb-4 flex items-center gap-1 self-start font-mono text-[9px] text-zinc-600 transition-colors hover:text-emerald-400"
                       >
                         <User className="h-2.5 w-2.5" />
                         {shortAddress(work.author)}
                         {isOwner && (
                           <Badge variant="success" className="ml-1 h-4 px-1 text-[8px]">
-                            TÚ
+                            YOU
                           </Badge>
                         )}
                       </button>
@@ -1021,13 +1021,13 @@ export const Explorer = () => {
                           </p>
                         </div>
                         <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
-                          <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Riesgo</p>
+                          <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Risk</p>
                           <Badge variant={getRiskVariant(work.riskLevel ?? -1)} className="mt-1 text-[8px]">
                             {RISK_LABEL[work.riskLevel ?? -1] ?? "—"}
                           </Badge>
                         </div>
                         <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
-                          <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Registro</p>
+                          <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Registered</p>
                           <p className="mt-1 font-mono text-[10px] font-bold text-white">
                             {formatDate(work.registeredAt)}
                           </p>
@@ -1036,10 +1036,10 @@ export const Explorer = () => {
                     ) : isVerified && work.mbInfo ? (
                       <div className="mb-4 mt-3 space-y-1 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">
                         <p className="font-mono text-[9px] uppercase tracking-wider text-blue-400/60">
-                          ✓ Verificado en MusicBrainz · {work.mbInfo.scorePercent}%
+                          ✓ Verified on MusicBrainz · {work.mbInfo.scorePercent}%
                         </p>
                         <p className="font-mono text-[9px] text-blue-400/50">
-                          Grabación ya existente: el protocolo no la registra on-chain.
+                          Existing recording: the protocol does not register it on-chain.
                         </p>
                         <a
                           href={`https://musicbrainz.org/recording/${work.mbInfo.recordingId}`}
@@ -1047,16 +1047,16 @@ export const Explorer = () => {
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 font-mono text-[9px] text-blue-400/60 transition-colors hover:text-blue-400"
                         >
-                          Ver en MusicBrainz <ExternalLink className="h-2.5 w-2.5" />
+                          View on MusicBrainz <ExternalLink className="h-2.5 w-2.5" />
                         </a>
                       </div>
                     ) : (
                       <div className="mb-4 mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
                         <p className="font-mono text-[9px] uppercase tracking-wider text-amber-400/70">
-                          Sin certificado on-chain
+                          No on-chain certificate
                         </p>
                         <p className="mt-1 font-mono text-[9px] text-amber-400/50">
-                          Subida el {formatDate(work.registeredAt)}. Envio no tiene ninguna obra que apunte a esta metadata.
+                          Uploaded on {formatDate(work.registeredAt)}. Envio has no work pointing to this metadata.
                         </p>
                       </div>
                     )}
@@ -1070,12 +1070,12 @@ export const Explorer = () => {
                         !authenticated ? (
                           <Button onClick={() => login()} className="w-full" size="lg">
                             <Lock className="h-3.5 w-3.5" />
-                            Conectar para Escuchar
+                            Connect to Listen
                           </Button>
                         ) : isOnchain && !isOwner ? (
                           <div className="rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">
                             <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
-                              Cifrado — solo el propietario puede reproducirlo
+                              Encrypted — only the owner can play it
                             </p>
                           </div>
                         ) : isReady && signMessage && address ? (
@@ -1089,7 +1089,7 @@ export const Explorer = () => {
                         ) : (
                           <Button onClick={() => login()} className="w-full" variant="secondary" size="lg">
                             <Shield className="h-3.5 w-3.5" />
-                            Desbloquear
+                            Unlock
                           </Button>
                         )
                       ) : (
@@ -1115,8 +1115,8 @@ export const Explorer = () => {
 
           {hiddenCount > 0 && !query && filter === "all" && (
             <p className="text-center font-mono text-[10px] text-zinc-600">
-              {hiddenCount} obra{hiddenCount !== 1 ? "s" : ""} on-chain oculta{hiddenCount !== 1 ? "s" : ""} (su
-              metadata no vincula audio)
+              {hiddenCount} on-chain work{hiddenCount !== 1 ? "s" : ""} hidden (their
+              metadata does not link audio)
             </p>
           )}
         </>

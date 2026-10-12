@@ -24,7 +24,7 @@ export function rpc(): ethers.JsonRpcProvider {
 }
 
 function reader() {
-  if (!LICENSING_ADDRESS) throw new Error("Falta VITE_LICENSING_ADDRESS en .env");
+  if (!LICENSING_ADDRESS) throw new Error("Missing VITE_LICENSING_ADDRESS in .env");
   return new ethers.Contract(LICENSING_ADDRESS, LICENSING_ABI, rpc());
 }
 
@@ -43,7 +43,7 @@ export async function readClaimable(account: string): Promise<bigint> {
 /** "0.5" → wei. Lanza si el texto no es un número válido > 0. */
 export function parseMon(input: string): bigint {
   const v = ethers.parseEther(input.trim().replace(",", "."));
-  if (v <= 0n) throw new Error("El precio debe ser mayor que 0.");
+  if (v <= 0n) throw new Error("The price must be greater than 0.");
   return v;
 }
 export const formatMon = (wei: bigint, digits = 4): string => {
@@ -54,7 +54,7 @@ export const formatMon = (wei: bigint, digits = 4): string => {
 /* ───────────────────────── Envio (Hasura GraphQL) ───────────────────────── */
 
 async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-  if (!ENVIO_URL) throw new Error("Envio no configurado");
+  if (!ENVIO_URL) throw new Error("Envio not configured");
   const res = await fetch(ENVIO_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

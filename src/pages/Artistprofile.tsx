@@ -70,7 +70,7 @@ export function ArtistProfile({ address }: Props) {
         onClick={exitArtistProfile}
         className="gap-2 text-zinc-500 hover:text-white"
       >
-        <ArrowLeft className="h-3.5 w-3.5" /> Volver
+        <ArrowLeft className="h-3.5 w-3.5" /> Back
       </Button>
 
       {/* Header del perfil */}
@@ -85,7 +85,7 @@ export function ArtistProfile({ address }: Props) {
                 <h2 className="font-display text-lg font-bold text-white">
                   {address.slice(0, 6)}...{address.slice(-4)}
                 </h2>
-                {isOwnProfile && <Badge variant="success" className="text-[9px]">TÚ</Badge>}
+                {isOwnProfile && <Badge variant="success" className="text-[9px]">YOU</Badge>}
               </div>
               <button
                 onClick={handleCopy}
@@ -93,7 +93,7 @@ export function ArtistProfile({ address }: Props) {
               >
                 {copied ? (
                   <>
-                    <Check className="h-3 w-3" /> Copiado
+                    <Check className="h-3 w-3" /> Copied
                   </>
                 ) : (
                   <>
@@ -110,18 +110,18 @@ export function ArtistProfile({ address }: Props) {
             rel="noreferrer"
             className="flex items-center gap-1.5 self-start rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2 font-mono text-[10px] text-zinc-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-colors no-underline sm:self-auto"
           >
-            Ver en el explorer <ExternalLink className="h-3 w-3" />
+            View on explorer <ExternalLink className="h-3 w-3" />
           </a>
         </div>
 
         {stats && (
           <div className="mt-6 grid grid-cols-3 gap-3 border-t border-zinc-800 pt-6">
             <div>
-              <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Obras</p>
+              <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Works</p>
               <p className="mt-1 font-display text-xl font-bold text-white">{stats.total}</p>
             </div>
             <div>
-              <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Score Promedio</p>
+              <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">Avg. Score</p>
               <p className="mt-1 font-display text-xl font-bold text-emerald-400">{stats.avgScore}%</p>
             </div>
             <div>
@@ -151,8 +151,8 @@ export function ArtistProfile({ address }: Props) {
           <Music className="h-8 w-8 text-zinc-700" />
           <p className="font-mono text-xs uppercase tracking-wider text-zinc-600">
             {works.length > 0
-              ? "Todas las obras de esta wallet usan metadata antigua sin audio vinculado"
-              : "Esta wallet no tiene obras registradas todavía"}
+              ? "All works from this wallet use legacy metadata with no linked audio"
+              : "This wallet has no registered works yet"}
           </p>
         </div>
       ) : (
@@ -177,7 +177,7 @@ export function ArtistProfile({ address }: Props) {
                   </div>
 
                   <h3 className="truncate font-display text-base font-bold uppercase text-white">
-                    {w.title ?? `Obra #${w.certificate?.tokenId ?? ""}`}
+                    {w.title ?? `Work #${w.certificate?.tokenId ?? ""}`}
                   </h3>
                   {w.artist && (
                     <p className="mt-1 mb-4 font-mono text-[10px] uppercase tracking-widest text-emerald-500/70">
@@ -189,18 +189,18 @@ export function ArtistProfile({ address }: Props) {
 
                   <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
                     <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">
-                      Score de Autenticidad
+                      Authenticity Score
                     </p>
                     <p className="mt-1 font-display text-sm font-bold text-white">{w.authenticityScore}%</p>
                   </div>
 
                   <div className="mt-auto space-y-3">
-                    <LicenseControl fingerprintHash={(w as any).fingerprintHash ?? (w as any).id} author={address} title={w.title ?? `Obra #${w.certificate?.tokenId ?? ""}`} audioUrl={w.audioCid ? LighthouseService.audioUrl(w.audioCid) : null} isEncrypted={w.isEncrypted} />
+                    <LicenseControl fingerprintHash={(w as any).fingerprintHash ?? (w as any).id} author={address} title={w.title ?? `Work #${w.certificate?.tokenId ?? ""}`} audioUrl={w.audioCid ? LighthouseService.audioUrl(w.audioCid) : null} isEncrypted={w.isEncrypted} />
                     {w.isEncrypted ? (
                       !w.audioCid ? (
                         <div className="rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">
                           <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
-                            Metadata antigua — audio no vinculado
+                            Legacy metadata — audio not linked
                           </p>
                         </div>
                       ) : isOwnProfile && isReady && myAddress && signMessage ? (
@@ -209,8 +209,8 @@ export function ArtistProfile({ address }: Props) {
                         <div className="rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">
                           <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
                             {isOwnProfile
-                              ? "Conecta tu wallet para desbloquear"
-                              : "Cifrado — solo el propietario puede reproducirlo"}
+                              ? "Connect your wallet to unlock"
+                              : "Encrypted — only the owner can play it"}
                           </p>
                         </div>
                       )
@@ -225,14 +225,14 @@ export function ArtistProfile({ address }: Props) {
                           <Headphones className="h-4 w-4" />
                         </div>
                         <div className="flex-1 text-left">
-                          <p className="m-0 text-sm font-bold text-white">Escuchar</p>
+                          <p className="m-0 text-sm font-bold text-white">Listen</p>
                           <p className="m-0 font-mono text-[9px] text-zinc-500">Open IPFS</p>
                         </div>
                       </a>
                     ) : (
                       <div className="rounded-2xl border border-zinc-700 bg-zinc-800/30 p-3 text-center">
                         <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
-                          Sin audio disponible
+                          No audio available
                         </p>
                       </div>
                     )}

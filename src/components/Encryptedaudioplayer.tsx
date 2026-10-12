@@ -21,12 +21,12 @@ interface Props {
 type DecryptState = "idle" | "signing" | "fetching-key" | "decrypting" | "ready" | "error";
 
 const STATE_LABEL: Record<DecryptState, string> = {
-  idle: "Desbloquear Obra",
-  signing: "Firmando...",
-  "fetching-key": "Obteniendo clave...",
-  decrypting: "Descifrando...",
+  idle: "Unlock Work",
+  signing: "Signing...",
+  "fetching-key": "Fetching key...",
+  decrypting: "Decrypting...",
   ready: "",
-  error: "Reintentar",
+  error: "Retry",
 };
 
 function WaveformBars({ playing }: { playing: boolean }) {
@@ -96,7 +96,7 @@ export function EncryptedAudioPlayer({ cid, ownerAddress, signMessage }: Props) 
       // 1. Mensaje de autenticación
       const authRes = await lh.getAuthMessage(ownerAddress);
       const message: string | undefined = (authRes as any)?.data?.message;
-      if (!message) throw new Error("No se pudo obtener el mensaje de autenticación de Lighthouse.");
+      if (!message) throw new Error("Could not get the Lighthouse authentication message.");
 
       // 2. Firmar — funciona con embedded wallet Y con MetaMask/Rabby
       const signature = await signMessage(message);
@@ -106,7 +106,7 @@ export function EncryptedAudioPlayer({ cid, ownerAddress, signMessage }: Props) 
       const keyRes = await lh.fetchEncryptionKey(cid, ownerAddress, signature);
       const encryptionKey: string | undefined = (keyRes as any)?.data?.key;
       if (!encryptionKey) {
-        throw new Error("Sin acceso — conecta la wallet que encriptó esta obra.");
+        throw new Error("No access — connect the wallet that encrypted this work.");
       }
 
       // 4. Descifrar con la clave
@@ -127,14 +127,14 @@ export function EncryptedAudioPlayer({ cid, ownerAddress, signMessage }: Props) 
 
     } catch (err: unknown) {
       console.error("[EncryptedAudioPlayer]", err);
-      let msg = err instanceof Error ? err.message : "Error al descifrar";
+      let msg = err instanceof Error ? err.message : "Decryption failed";
 
       if (msg.includes("s11") || msg.toLowerCase().includes("embedded wallet")) {
-        msg = "Error de wallet. Reconecta con email, Google o MetaMask.";
+        msg = "Wallet error. Reconnect with email, Google or MetaMask.";
       } else if (msg.includes("reject") || msg.includes("denied") || msg.includes("User rejected")) {
-        msg = "Firma rechazada. Acepta la solicitud en tu wallet.";
+        msg = "Signature rejected. Approve the request in your wallet.";
       } else if (msg.toLowerCase().includes("key") || msg.includes("acceso") || msg.includes("access")) {
-        msg = "Sin acceso — esta obra fue encriptada con otra wallet.";
+        msg = "No access — this work was encrypted with another wallet.";
       }
 
       setError(msg);
@@ -207,7 +207,7 @@ export function EncryptedAudioPlayer({ cid, ownerAddress, signMessage }: Props) 
               onClick={handleClose}
               className="w-full text-center font-mono text-[9px] uppercase tracking-wider text-zinc-600 transition-colors hover:text-zinc-400"
             >
-              Cerrar ✕
+              Close ✕
             </button>
           </motion.div>
         ) : (

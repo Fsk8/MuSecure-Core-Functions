@@ -9,7 +9,7 @@ export function useGasAirdrop(address: string | null, isNewUser?: boolean) {
 
   const requestManualAirdrop = useCallback(async (targetAddress: string) => {
     setStatus("sending");
-    setMessage(`Fondeando tu cuenta con ${CHAIN.symbol} de testnet...`);
+    setMessage(`Funding your account with testnet ${CHAIN.symbol}...`);
 
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL as string ?? "";
@@ -23,22 +23,22 @@ export function useGasAirdrop(address: string | null, isNewUser?: boolean) {
 
       if (data.skipped) {
         setStatus("skipped");
-        setMessage(data.reason === "has_balance" ? "✅ Ya tienes fondos suficientes" : "Ya recibiste tu airdrop");
+        setMessage(data.reason === "has_balance" ? "✅ You already have enough funds" : "You already received your airdrop");
         setTimeout(() => setMessage(null), 5000);
         return;
       }
 
       if (!data.success) {
-        throw new Error(data.error ?? "Error en el airdrop");
+        throw new Error(data.error ?? "Airdrop error");
       }
 
       setStatus("done");
-      setMessage(`✅ Recibiste ${data.amount} ${CHAIN.symbol} para gas`);
+      setMessage(`✅ You received ${data.amount} ${CHAIN.symbol} for gas`);
       setTimeout(() => setMessage(null), 5000);
     } catch (e) {
       setStatus("error");
-      setMessage("Error al solicitar gas");
-      console.warn("[Airdrop] Falló:", (e as Error).message);
+      setMessage("Error requesting gas");
+      console.warn("[Airdrop] Failed:", (e as Error).message);
       setTimeout(() => setMessage(null), 5000);
     }
   }, []);

@@ -66,7 +66,7 @@ export function useMyCredits(address: string | null | undefined) {
         const others = Math.max(0, total - mine);
         return {
           work: c.work,
-          title: `Obra #${c.work.tokenId}`,
+          title: `Work #${c.work.tokenId}`,
           artist: "...",
           audioCid: "",
           isEncrypted: false,
@@ -99,7 +99,7 @@ export function useMyCredits(address: string | null | undefined) {
         );
       });
     } catch (e) {
-      if (alive()) setError((e as Error).message || "No se pudieron cargar los créditos");
+      if (alive()) setError((e as Error).message || "Could not load credits");
     } finally {
       if (alive()) setLoading(false);
     }

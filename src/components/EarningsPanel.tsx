@@ -1,5 +1,5 @@
 /**
- * MuSecure – components/EarningsPanel.tsx  ("Mis ganancias")
+ * MuSecure – components/EarningsPanel.tsx  ("My earnings")
  * Regalías recibidas por licencias vendidas, saldo retirable y últimas operaciones.
  * Uso:  <EarningsPanel address={address} />
  */
@@ -30,28 +30,28 @@ export function EarningsPanel({ address }: { address: string | null | undefined 
       <div className="mb-5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Coins className="h-4 w-4 text-emerald-400" />
-          <h3 className="font-display text-lg font-bold text-white">Mis ganancias</h3>
+          <h3 className="font-display text-lg font-bold text-white">My earnings</h3>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void reload()} disabled={loading} className="gap-2 text-zinc-500 hover:text-white">
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          Actualizar
+          Refresh
         </Button>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <Stat label="Total recibido" value={`${formatMon(summary?.totalEarned ?? 0n)} ${CHAIN.symbol}`} />
-        <Stat label="Licencias vendidas" value={String(summary?.salesCount ?? 0)} />
-        <Stat label="Por retirar" value={`${formatMon(claimable)} ${CHAIN.symbol}`} accent={claimable > 0n} />
+        <Stat label="Total received" value={`${formatMon(summary?.totalEarned ?? 0n)} ${CHAIN.symbol}`} />
+        <Stat label="Licenses sold" value={String(summary?.salesCount ?? 0)} />
+        <Stat label="To withdraw" value={`${formatMon(claimable)} ${CHAIN.symbol}`} accent={claimable > 0n} />
       </div>
 
       {claimable > 0n && (
         <div className="mt-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4">
           <p className="mb-3 text-[11px] leading-relaxed text-zinc-400">
-            Algunos pagos no pudieron enviarse directo a tu wallet y quedaron guardados en el contrato. Retíralos aquí.
+            Some payouts could not be sent directly to your wallet and were held in the contract. Withdraw them here.
           </p>
           <Button onClick={withdraw} disabled={busy} size="sm" className="gap-2">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wallet className="h-3.5 w-3.5" />}
-            {busy ? state.message : `Retirar ${formatMon(claimable)} ${CHAIN.symbol}`}
+            {busy ? state.message : `Withdraw ${formatMon(claimable)} ${CHAIN.symbol}`}
           </Button>
         </div>
       )}
@@ -59,19 +59,19 @@ export function EarningsPanel({ address }: { address: string | null | undefined 
         <p className="mt-3 text-[11px] text-red-400">
           {state.error}{" "}
           <button className="underline" onClick={reset}>
-            cerrar
+            dismiss
           </button>
         </p>
       )}
       {error && <p className="mt-3 text-[11px] text-amber-400">{error}</p>}
       {indexerDown && (
         <p className="mt-3 break-words text-[11px] text-zinc-500">
-          Historial no disponible (indexador): {indexerDown}. El saldo por retirar sí es on-chain.
+          History unavailable (indexer): {indexerDown}. The withdrawable balance is read on-chain.
         </p>
       )}
 
       <div className="mt-6 border-t border-zinc-800 pt-4">
-        <p className="mb-3 font-mono text-[9px] uppercase tracking-widest text-zinc-600">Últimos pagos</p>
+        <p className="mb-3 font-mono text-[9px] uppercase tracking-widest text-zinc-600">Recent payouts</p>
         {summary && summary.royalties.length > 0 ? (
           <ul className="space-y-2">
             {summary.royalties.map((r) => (
@@ -81,8 +81,8 @@ export function EarningsPanel({ address }: { address: string | null | undefined 
                   <p className="font-mono text-[9px] text-zinc-600">{new Date(r.paidAt * 1000).toLocaleString()}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="font-mono text-[9px]">{r.isAuthor ? "Autor" : "Co-autor"}</Badge>
-                  {!r.direct && <Badge variant="secondary" className="font-mono text-[9px]">Pendiente</Badge>}
+                  <Badge variant="secondary" className="font-mono text-[9px]">{r.isAuthor ? "Author" : "Co-author"}</Badge>
+                  {!r.direct && <Badge variant="secondary" className="font-mono text-[9px]">Pending</Badge>}
                   <span className="font-mono text-xs text-emerald-400">+{formatMon(r.amount)} {CHAIN.symbol}</span>
                   <a href={txUrl(r.txHash)} target="_blank" rel="noreferrer" className="text-zinc-600 hover:text-violet-400">
                     <ExternalLink className="h-3 w-3" />
@@ -92,7 +92,7 @@ export function EarningsPanel({ address }: { address: string | null | undefined 
             ))}
           </ul>
         ) : (
-          <p className="text-[11px] text-zinc-600">Aún no has recibido regalías.</p>
+          <p className="text-[11px] text-zinc-600">No royalties received yet.</p>
         )}
       </div>
     </div>

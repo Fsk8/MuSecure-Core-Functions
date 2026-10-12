@@ -19,7 +19,7 @@ interface Credit {
 
 interface Props {
   credits?: Credit[] | null;
-  /** Wallet conectada: marca con "TÚ" su propia fila. */
+  /** Wallet conectada: marca con "YOU" su propia fila. */
   myAddress?: string | null;
 }
 
@@ -39,9 +39,9 @@ export function CollaboratorsList({ credits, myAddress }: Props) {
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-widest text-violet-400/80">
           <Users className="h-3 w-3" />
-          Co-autores ({sorted.length})
+          Co-authors ({sorted.length})
         </p>
-        <span className="font-mono text-[9px] text-zinc-600">Creador {creatorPct}%</span>
+        <span className="font-mono text-[9px] text-zinc-600">Creator {creatorPct}%</span>
       </div>
 
       <ul className="space-y-1">
@@ -58,7 +58,7 @@ export function CollaboratorsList({ credits, myAddress }: Props) {
                 </span>
                 {isMe && (
                   <Badge variant="success" className="h-4 px-1 text-[8px]">
-                    TÚ
+                    YOU
                   </Badge>
                 )}
               </span>

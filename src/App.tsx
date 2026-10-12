@@ -41,7 +41,7 @@ function LoadingScreen() {
           ))}
         </div>
         <p className="font-mono text-xs uppercase tracking-[0.3em] text-zinc-600">
-          Sincronizando
+          Syncing
         </p>
       </motion.div>
     </div>
@@ -109,7 +109,7 @@ export default function App() {
                 MuSecure
               </h1>
               <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-600">
-                Proteccion de IP Musical
+                Music IP Protection
               </p>
             </div>
           </div>
@@ -122,7 +122,7 @@ export default function App() {
 
                 {/* 2. Info de Wallet con Logout */}
                 <div className="flex items-center gap-2">
-                  <Badge variant="success" className="hidden sm:flex">Conectado</Badge>
+                  <Badge variant="success" className="hidden sm:flex">Connected</Badge>
                   <div className="group relative flex items-center gap-3 rounded-xl border border-surface-border bg-surface-raised px-4 py-2 hover:border-red-500/30 transition-all">
                     <span className="font-mono text-xs text-emerald-500">
                       {address.slice(0, 6)}...{address.slice(-4)}
@@ -130,7 +130,7 @@ export default function App() {
                     <button 
                       onClick={logout}
                       className="text-zinc-500 hover:text-red-400 transition-colors"
-                      title="Cerrar sesión"
+                      title="Sign out"
                     >
                       <LogOut className="h-3.5 w-3.5" />
                     </button>
@@ -140,7 +140,7 @@ export default function App() {
             ) : (
               <Button onClick={login} size="sm" className="rounded-xl">
                 <Wallet className="mr-2 h-4 w-4" />
-                Conectar
+                Connect
               </Button>
             )}
           </div>
@@ -174,15 +174,15 @@ export default function App() {
           <TabsList>
             <TabsTrigger value="upload" className="gap-2">
               <Upload className="h-3.5 w-3.5" />
-              Subir Obra
+              Upload Work
             </TabsTrigger>
             <TabsTrigger value="dashboard" className="gap-2">
               <Shield className="h-3.5 w-3.5" />
-              Mis Obras
+              My Works
             </TabsTrigger>
             <TabsTrigger value="explorer" className="gap-2">
               <LayoutGrid className="h-3.5 w-3.5" />
-              Catalogo
+              Catalog
             </TabsTrigger>
           </TabsList>
         </div>
@@ -209,9 +209,9 @@ export default function App() {
               <FingerprintUploader />
             ) : (
               <EmptyState
-                message="Debes conectar tu identidad para subir obras"
+                message="Connect your identity to upload works"
                 onAction={login}
-                actionLabel="Conectar Ahora"
+                actionLabel="Connect Now"
               />
             )}
           </motion.div>
@@ -227,9 +227,9 @@ export default function App() {
               <Dashboard />
             ) : (
               <EmptyState
-                message="Conecta tu wallet para ver tu catalogo personal"
+                message="Connect your wallet to see your personal catalog"
                 onAction={login}
-                actionLabel="Ver mi Dashboard"
+                actionLabel="View my Dashboard"
               />
             )}
           </motion.div>

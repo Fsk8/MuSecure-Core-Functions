@@ -22,7 +22,7 @@ export async function generateChromaprintForAcoustId(
     console.log("[Chromaprint] Duracion:", durationSec, "s");
   } catch (e) {
     console.error("[Chromaprint] Error decodificando:", e);
-    throw new Error("No se pudo decodificar el audio: " + (e as Error).message);
+    throw new Error("Could not decode the audio: " + (e as Error).message);
   } finally {
     await ac.close();
   }
@@ -45,7 +45,7 @@ export async function generateChromaprintForAcoustId(
     break;
   }
 
-  if (!fingerprint) throw new Error("Fingerprint vacio. Prueba WAV/MP3/OGG.");
+  if (!fingerprint) throw new Error("Empty fingerprint. Try WAV/MP3/OGG.");
 
   console.log("[Chromaprint] OK - longitud:", fingerprint.length, "primeros chars:", fingerprint.slice(0, 20));
   return { fingerprint, durationSec };

@@ -44,11 +44,11 @@ export function CreditCollaboratorsPanel({ fingerprintHash, collaborators }: Pro
       >
         <div className="mb-2 flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4 text-violet-400" />
-          <p className="font-mono text-xs font-bold uppercase text-violet-400">Co-autores acreditados on-chain</p>
+          <p className="font-mono text-xs font-bold uppercase text-violet-400">Co-authors credited on-chain</p>
         </div>
         <p className="text-[11px] leading-relaxed text-zinc-400">
-          Cada colaborador verá esta obra en <span className="text-zinc-200">Mis Créditos</span> al iniciar sesión
-          con su correo: su wallet embebida de Privy ya existe y está registrada en el contrato.
+          Each collaborator will see this work under <span className="text-zinc-200">My Credits</span> when they sign in
+          with their email: their Privy embedded wallet already exists and is registered in the contract.
         </p>
         {state.txHash && (
           <a
@@ -57,7 +57,7 @@ export function CreditCollaboratorsPanel({ fingerprintHash, collaborators }: Pro
             rel="noreferrer"
             className="mt-3 inline-flex items-center gap-1.5 font-mono text-[10px] text-zinc-500 no-underline transition-colors hover:text-violet-400"
           >
-            Ver transacción <ExternalLink className="h-3 w-3" />
+            View transaction <ExternalLink className="h-3 w-3" />
           </a>
         )}
       </motion.div>
@@ -68,7 +68,7 @@ export function CreditCollaboratorsPanel({ fingerprintHash, collaborators }: Pro
     <div className="w-full space-y-3 rounded-2xl border border-violet-500/30 bg-violet-500/5 p-4 text-left">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Users className="h-4 w-4 text-violet-400" />
-        <p className="font-mono text-xs font-bold uppercase text-violet-400">Acreditar co-autores on-chain</p>
+        <p className="font-mono text-xs font-bold uppercase text-violet-400">Credit co-authors on-chain</p>
         <span className="font-mono text-[9px] text-zinc-500">(Powered by Privy)</span>
       </div>
 
@@ -88,15 +88,15 @@ export function CreditCollaboratorsPanel({ fingerprintHash, collaborators }: Pro
           </li>
         ))}
         <li className="flex items-center justify-between gap-3 px-3 py-1">
-          <span className="font-mono text-[11px] text-zinc-500">Tú (creador)</span>
+          <span className="font-mono text-[11px] text-zinc-500">You (creator)</span>
           <span className="font-mono text-[10px] text-emerald-500">{creatorPct}%</span>
         </li>
       </ul>
 
       <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-zinc-500">
         <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
-        Es permanente: los créditos se escriben una sola vez y no se pueden editar. Se crea una wallet embebida
-        de Privy para cada correo y se declara su porcentaje en el contrato.
+        It is permanent: credits are written once and cannot be edited. A Privy embedded wallet is created
+        for each email and its percentage is declared in the contract.
       </p>
 
       <Button onClick={run} disabled={busy || !isReady || !address} className="w-full" size="lg">
@@ -106,11 +106,11 @@ export function CreditCollaboratorsPanel({ fingerprintHash, collaborators }: Pro
             {state.message}
           </>
         ) : state.step === "error" ? (
-          "Reintentar acreditación"
+          "Retry crediting"
         ) : (
           <>
             <Users className="mr-2 h-4 w-4" />
-            Acreditar co-autores
+            Credit co-authors
           </>
         )}
       </Button>

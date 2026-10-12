@@ -48,12 +48,12 @@ const REGISTRY_ABI = [
 
 const STEP_MESSAGES: Record<RegisterStep, string> = {
   "idle":                 "",
-  "checking-duplicate":   "Verificando registro previo...",
-  "requesting-signature": "Solicitando firma al backend...",
-  "waiting-wallet":       "Confirma en tu wallet...",
-  "confirming":           `Confirmando en ${CHAIN.name}...`,
-  "done":                 "¡Registro exitoso!",
-  "error":                "Error en el proceso",
+  "checking-duplicate":   "Checking for an existing registration...",
+  "requesting-signature": "Requesting backend signature...",
+  "waiting-wallet":       "Confirm in your wallet...",
+  "confirming":           `Confirming on ${CHAIN.name}...`,
+  "done":                 "Registration successful!",
+  "error":                "Process error",
 };
 
 export function useRegisterWork() {
@@ -74,8 +74,8 @@ export function useRegisterWork() {
     const rpcUrl = RPC_URL;
 
     try {
-      if (!registryAddress) throw new Error("Falta VITE_REGISTRY_ADDRESS en .env");
-      if (!isReady || !getProvider) throw new Error("Wallet no disponible. Reconecta tu cuenta.");
+      if (!registryAddress) throw new Error("Missing VITE_REGISTRY_ADDRESS in .env");
+      if (!isReady || !getProvider) throw new Error("Wallet unavailable. Reconnect your account.");
 
       let cleanHash = input.fingerprintHash;
       if (!cleanHash.startsWith("0x")) cleanHash = "0x" + cleanHash;
@@ -86,7 +86,7 @@ export function useRegisterWork() {
       const rpcProvider = new ethers.JsonRpcProvider(rpcUrl);
       const registryRead = new ethers.Contract(registryAddress, REGISTRY_ABI, rpcProvider);
       const exists = await registryRead.workExists(cleanHash);
-      if (exists) throw new Error("Esta huella ya está registrada en MuSecure.");
+      if (exists) throw new Error("This fingerprint is already registered in MuSecure.");
 
       // ── 2. Firma del backend ──────────────────────────────────────────────
       set("requesting-signature");
@@ -108,7 +108,7 @@ export function useRegisterWork() {
         throw new Error(`Backend ${sigRes.status}: ${txt}`);
       }
       const sigData = await sigRes.json();
-      if (!sigData.success) throw new Error(sigData.error ?? "Falla en firma del backend");
+      if (!sigData.success) throw new Error(sigData.error ?? "Backend signing failure");
 
       // ── 3. Obtener provider de Privy ────────────────────────────────────────
       // IMPORTANTE: Separamos lectura de firma para evitar el error NETWORK_ERROR.
@@ -121,7 +121,7 @@ export function useRegisterWork() {
       // getNetwork y getFeeData desde el RPC público — no pasa por rpc.privy.systems
       const network = await rpcProvider.getNetwork();
       if (network.chainId.toString() !== String(CHAIN.id)) {
-        throw new Error(`El RPC configurado no es ${CHAIN.name} (chainId: ${CHAIN.id}).`);
+        throw new Error(`The configured RPC is not ${CHAIN.name} (chainId: ${CHAIN.id}).`);
       }
 
       // La wallet embebida/externa debe estar en la red correcta antes de enviar.
@@ -156,7 +156,7 @@ export function useRegisterWork() {
         gasLimit = (est * 130n) / 100n;
       } catch (e: any) {
         if (e?.code === "CALL_EXCEPTION" || /revert/i.test(String(e?.message))) {
-          throw new Error(`El contrato rechazó la transacción: ${e?.reason ?? e?.shortMessage ?? "revert"}`);
+          throw new Error(`The contract rejected the transaction: ${e?.reason ?? e?.shortMessage ?? "revert"}`);
         }
       }
 
@@ -171,13 +171,13 @@ export function useRegisterWork() {
         maxPriorityFeePerGas: ethers.toBeHex(maxPriorityFeePerGas),
       }]);
 
-      if (!txHash) throw new Error("No se recibió hash de transacción.");
+      if (!txHash) throw new Error("No transaction hash received.");
 
       // ── 5. Esperar confirmación via RPC público ───────────────────────────
       set("confirming", { txHash });
       const receipt = await rpcProvider.waitForTransaction(txHash, 1, 120_000);
-      if (!receipt) throw new Error("La transacción no se confirmó en 2 minutos.");
-      if (receipt.status === 0) throw new Error("La transacción fue revertida por el contrato.");
+      if (!receipt) throw new Error("The transaction was not confirmed within 2 minutes.");
+      if (receipt.status === 0) throw new Error("The transaction was reverted by the contract.");
 
       let tokenId = 0;
       for (const log of receipt.logs ?? []) {
@@ -195,16 +195,16 @@ export function useRegisterWork() {
 
     } catch (err: any) {
       console.error("[RegisterWork] Error:", err);
-      let msg = err.reason ?? err.error?.message ?? err.message ?? "Error desconocido";
+      let msg = err.reason ?? err.error?.message ?? err.message ?? "Unknown error";
 
       // Mensajes amigables para errores comunes
       if (msg.toLowerCase().includes("user rejected") || msg.includes("4001")) {
-        msg = "Transacción cancelada por el usuario.";
+        msg = "Transaction cancelled by the user.";
       } else if (msg.toLowerCase().includes("insufficient funds")) {
-        msg = `Fondos insuficientes para el gas. Pide ${CHAIN.symbol} de prueba abajo.`;
+        msg = `Insufficient funds for gas. Request test ${CHAIN.symbol} below.`;
       } else if (msg.includes("recovery") || msg.includes("Recovery")) {
         // Si aparece este error, es un bug de compatibilidad de Privy
-        msg = "Error de wallet. Intenta cerrar sesión y volver a conectar.";
+        msg = "Wallet error. Try signing out and reconnecting.";
       }
 
       set("error", { error: msg });
