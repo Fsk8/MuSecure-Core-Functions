@@ -1,6 +1,6 @@
 /**
  * MuSecure – components/LicenseCertificate.tsx
- * Certificado de licencia (modal) con verificación on-chain, descarga (.html) e impresión/PDF.
+ * License certificate (modal) con verificación on-chain, descarga (.html) e impresión/PDF.
  * El certificado es una vista de datos reales de la blockchain: no es un documento legal.
  */
 import { useEffect, useState } from "react";
@@ -25,7 +25,7 @@ const esc = (s: string) =>
 function certificateHtml(p: {
   title: string; hash: string; licensee: string; price: string; date: string; tx: string; txLink: string;
 }): string {
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Licencia – ${esc(p.title)}</title>
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>License – ${esc(p.title)}</title>
 <style>
 body{font-family:Georgia,serif;max-width:720px;margin:40px auto;padding:0 24px;color:#111}
 h1{font-size:28px;margin:0 0 4px}.tag{font:12px monospace;letter-spacing:.2em;text-transform:uppercase;color:#047857}
@@ -33,19 +33,19 @@ dl{margin:28px 0}dt{font:11px monospace;text-transform:uppercase;letter-spacing:
 dd{margin:4px 0 0;font:14px monospace;word-break:break-all}.box{border:2px solid #047857;padding:28px;border-radius:12px}
 .note{font-size:12px;color:#555;margin-top:24px;line-height:1.5}a{color:#047857}
 </style></head><body><div class="box">
-<div class="tag">MuSecure · Certificado de licencia · ${esc(CHAIN.name)}</div>
+<div class="tag">MuSecure · License certificate · ${esc(CHAIN.name)}</div>
 <h1>${esc(p.title)}</h1>
-<p>Se certifica que la siguiente wallet adquirió una licencia de uso de esta obra, con el pago repartido on-chain entre su autor y co-autores.</p>
+<p>This certifies that the following wallet acquired a license to use this work, with the payment split on-chain between its author and co-authors.</p>
 <dl>
-<dt>Licenciatario</dt><dd>${esc(p.licensee)}</dd>
-<dt>Huella de la obra (fingerprintHash)</dt><dd>${esc(p.hash)}</dd>
-<dt>Precio pagado</dt><dd>${esc(p.price)}</dd>
-<dt>Fecha</dt><dd>${esc(p.date)}</dd>
-<dt>Transacción de compra</dt><dd>${p.txLink ? `<a href="${esc(p.txLink)}">${esc(p.tx)}</a>` : esc(p.tx)}</dd>
-<dt>Contrato</dt><dd>MuSecureLicensing ${esc(LICENSING_ADDRESS)}</dd>
+<dt>Licensee</dt><dd>${esc(p.licensee)}</dd>
+<dt>Work fingerprint (fingerprintHash)</dt><dd>${esc(p.hash)}</dd>
+<dt>Price paid</dt><dd>${esc(p.price)}</dd>
+<dt>Date</dt><dd>${esc(p.date)}</dd>
+<dt>Purchase transaction</dt><dd>${p.txLink ? `<a href="${esc(p.txLink)}">${esc(p.tx)}</a>` : esc(p.tx)}</dd>
+<dt>Contract</dt><dd>MuSecureLicensing ${esc(LICENSING_ADDRESS)}</dd>
 </dl>
-<p class="note">Verificación: llamar <code>hasLicense(${esc(p.hash)}, ${esc(p.licensee)})</code> en el contrato debe devolver <code>true</code>.
-Este certificado refleja datos de la blockchain; es una demostración y no constituye asesoría ni documento legal.</p>
+<p class="note">Verification: calling <code>hasLicense(${esc(p.hash)}, ${esc(p.licensee)})</code> on the contract must return <code>true</code>.
+This certificate reflects blockchain data; it is a demonstration and does not constitute advice or a legal document.</p>
 </div></body></html>`;
 }
 
@@ -80,7 +80,7 @@ export function LicenseCertificate({ fingerprintHash, title, licensee, knownTx, 
     const blob = new Blob([certificateHtml(data)], { type: "text/html" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `licencia-${fingerprintHash.slice(2, 10)}.html`;
+    a.download = `license-${fingerprintHash.slice(2, 10)}.html`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -103,7 +103,7 @@ export function LicenseCertificate({ fingerprintHash, title, licensee, knownTx, 
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <p className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-widest text-emerald-400">
-              <ShieldCheck className="h-3.5 w-3.5" /> Certificado de licencia
+              <ShieldCheck className="h-3.5 w-3.5" /> License certificate
             </p>
             <h3 className="mt-1 font-display text-lg font-bold text-white">{title}</h3>
           </div>
@@ -113,12 +113,12 @@ export function LicenseCertificate({ fingerprintHash, title, licensee, knownTx, 
         </div>
 
         <dl className="space-y-3 font-mono text-[11px]">
-          <Row k="Licenciatario" v={licensee} />
-          <Row k="Obra (fingerprintHash)" v={fingerprintHash} />
-          <Row k="Precio pagado" v={data.price} />
-          <Row k="Fecha" v={data.date} />
+          <Row k="Licensee" v={licensee} />
+          <Row k="Work (fingerprintHash)" v={fingerprintHash} />
+          <Row k="Price paid" v={data.price} />
+          <Row k="Date" v={data.date} />
           <div>
-            <dt className="text-[9px] uppercase tracking-widest text-zinc-600">Transacción</dt>
+            <dt className="text-[9px] uppercase tracking-widest text-zinc-600">Transaction</dt>
             <dd className="mt-0.5 break-all text-zinc-300">
               {tx ? (
                 <a href={txUrl(tx)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-emerald-400 no-underline hover:underline">
@@ -130,7 +130,7 @@ export function LicenseCertificate({ fingerprintHash, title, licensee, knownTx, 
             </dd>
           </div>
           <div>
-            <dt className="text-[9px] uppercase tracking-widest text-zinc-600">Contrato</dt>
+            <dt className="text-[9px] uppercase tracking-widest text-zinc-600">Contract</dt>
             <dd className="mt-0.5 break-all">
               <a href={addressUrl(LICENSING_ADDRESS)} target="_blank" rel="noreferrer" className="text-zinc-300 no-underline hover:text-emerald-400">
                 MuSecureLicensing {LICENSING_ADDRESS}
@@ -142,25 +142,25 @@ export function LicenseCertificate({ fingerprintHash, title, licensee, knownTx, 
         <div className="mt-4 rounded-2xl border border-zinc-800 bg-black/30 p-3 font-mono text-[10px]">
           {verified === "checking" ? (
             <span className="flex items-center gap-2 text-zinc-500">
-              <Loader2 className="h-3 w-3 animate-spin" /> Verificando on-chain…
+              <Loader2 className="h-3 w-3 animate-spin" /> Verifying on-chain…
             </span>
           ) : verified === "yes" ? (
             <span className="flex items-center gap-2 text-emerald-400">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Verificado en {CHAIN.name}: hasLicense = true
+              <CheckCircle2 className="h-3.5 w-3.5" /> Verified on {CHAIN.name}: hasLicense = true
             </span>
           ) : (
             <span className="flex items-center gap-2 text-amber-400">
-              <AlertTriangle className="h-3.5 w-3.5" /> No se pudo verificar la licencia on-chain.
+              <AlertTriangle className="h-3.5 w-3.5" /> Could not verify the license on-chain.
             </span>
           )}
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
           <Button size="sm" onClick={download} className="gap-2">
-            <Download className="h-3.5 w-3.5" /> Descargar certificado
+            <Download className="h-3.5 w-3.5" /> Download certificate
           </Button>
           <Button size="sm" variant="secondary" onClick={print} className="gap-2">
-            <Printer className="h-3.5 w-3.5" /> Imprimir / PDF
+            <Printer className="h-3.5 w-3.5" /> Print / PDF
           </Button>
         </div>
       </div>

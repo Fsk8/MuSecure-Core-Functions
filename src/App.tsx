@@ -1,7 +1,7 @@
 import { FingerprintUploader } from "@/components/FingerprintUploader";
 import { Dashboard } from "@/pages/Dashboard";
 import { Explorer } from "@/components/Explorer";
-import { ArtistProfile } from "@/pages/Artistprofile";
+import { ArtistProfile } from "@/pages/ArtistProfile";
 import { getArtistFromUrl, onArtistNavigate } from "@/lib/Artistnavigation";
 import { useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
