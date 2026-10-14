@@ -4,7 +4,7 @@ Note: Scroll down for the Spanish version / Desliza hacia abajo para la versión
 
 🇺🇸 English Version
 
-MuSecure is a decentralized platform designed to grant sovereignty and integrity to musical intellectual property. By utilizing Acoustic Fingerprinting, local WASM processing, and the Arbitrum network, MuSecure creates an immutable and verifiable record of authorship.
+MuSecure is a decentralized platform designed to grant sovereignty and integrity to musical intellectual property. By utilizing Acoustic Fingerprinting, local WASM processing, and the Monad network, MuSecure creates an immutable and verifiable record of authorship.
 
 🛠️ Tech Stack
 
