@@ -65,7 +65,7 @@ Envio is the read layer of the app. It indexes the MuSecure contracts and powers
 The indexer lives in [`indexer/`](./indexer).
 
 ### Privy
-Privy is the identity and wallet layer. Artists sign in and get an embedded wallet with no extension or seed phrase; signing runs without extra prompts. `/api/resolve-collaborators` uses Privy to pre-generate embedded wallets for collaborators by email, so co-author shares can be paid on-chain even if they have never used crypto. A gas airdrop on testnet funds new accounts.
+Privy is the identity and wallet layer. Artists sign in and get an embedded wallet with no extension or seed phrase; signing runs without extra prompts. `/api/resolve-collaborators` uses Privy to pre-generate embedded wallets for collaborators by email, so co-author shares can be paid on-chain even if they have never used crypto. A gas airdrop on testnet can be requested by new accounts when registering a song.
 
 ### Alchemy (Monad)
 The frontend and server use an **Alchemy Monad Testnet RPC** (`eth_getBalance`, `eth_sendRawTransaction`, `eth_getTransactionReceipt`). `/api/alchemy-webhook` is a webhook receiver that verifies Alchemy's `X-Alchemy-Signature` (HMAC-SHA256 over the raw body) and decodes MuSecure events with an ethers `Interface`.
@@ -84,7 +84,7 @@ The webhook is configured as an **Address Activity** webhook on `MuSecureLicensi
 
 ### Three ways to try it
 
-1. **Live demo (easiest):** https://mu-secure-core-functions-anhj.vercel.app. Nothing to install. Use a Monad Testnet wallet; new Privy accounts get a gas airdrop.
+1. **Live demo (easiest):** https://mu-secure-core-functions-anhj.vercel.app. Nothing to install. Use a Monad Testnet wallet; new Privy accounts can request a gas airdrop when they register a song.
 2. **Run the frontend locally against our deployed contracts.** You can browse works, log in, view credits and earnings, and buy licenses. **Registering new works needs the score signer authorized in our Registry contract, which only we hold**, so for registration use option 1 or option 3.
 3. **Full self-hosted stack:** deploy the contracts yourself with your own score signer (`musecure-contracts/`), set the new addresses in `.env`, run your own indexer (`indexer/`), and run the app. Everything below applies.
 
