@@ -10,7 +10,7 @@ MuSecure is a decentralized platform designed to grant sovereignty and integrity
 
 Frontend: React, Vite, Next.js, Tailwind CSS, Framer Motion.
 
-Blockchain: Arbitrum (L2), Ethers.js v6.
+Blockchain: Monad Testnet, Ethers.js v6.
 
 Auth & Wallet: Privy (Embedded Wallets for seamless UX).
 
@@ -28,7 +28,7 @@ Anti-Plagiarism Validation: The system queries MusicBrainz. If a match is found,
 
 Certification & Signing: A backend service validates originality and signs an "Attestation" using the SCORE_SIGNER_KEY.
 
-Registration & Faucet: The work is registered on Arbitrum. If the user has no funds, the Integrated Faucet (Treasury Key) automatically covers the gas cost.
+Registration & Faucet: The work is registered on Monad. If the user has no funds, the Integrated Faucet (Treasury Key) automatically covers the gas cost.
 
 ⚙️ Environment Setup
 
@@ -63,13 +63,13 @@ npm run dev
 
 🇪🇸 Versión en Español
 
-MuSecure es una plataforma descentralizada diseñada para otorgar soberanía e integridad a la propiedad intelectual musical. Mediante el uso de Huellas Acústicas (Fingerprinting), procesamiento local en WASM y la red de Arbitrum, MuSecure crea un registro inmutable y verificable de la autoría de una obra.
+MuSecure es una plataforma descentralizada diseñada para otorgar soberanía e integridad a la propiedad intelectual musical. Mediante el uso de Huellas Acústicas (Fingerprinting), procesamiento local en WASM y la red de Monad, MuSecure crea un registro inmutable y verificable de la autoría de una obra.
 
 🛠️ Stack Tecnológico
 
 Frontend: React, Vite, Next.js, Tailwind CSS, Framer Motion.
 
-Blockchain: Arbitrum (L2), Ethers.js v6.
+Blockchain: Monad, Ethers.js v6.
 
 Auth & Wallet: Privy (Embedded Wallets para UX fluida).
 
@@ -87,7 +87,7 @@ Validación Anti-Plagio: El sistema consulta MusicBrainz. Si se detecta una coin
 
 Certificación & Firma: Un servicio de backend valida la originalidad y firma un "Attestation" usando la SCORE_SIGNER_KEY.
 
-Registro & Faucet: La obra se registra en Arbitrum. Si el usuario no tiene fondos, la Faucet Integrada (Treasury Key) cubre automáticamente el costo del gas.
+Registro & Faucet: La obra se registra en Monad. Si el usuario no tiene fondos, la Faucet Integrada (Treasury Key) cubre automáticamente el costo del gas.
 
 ⚙️ Configuración del Entorno
 
