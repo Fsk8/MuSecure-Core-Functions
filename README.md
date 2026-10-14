@@ -189,5 +189,5 @@ React · Vite · TypeScript · Privy · ethers · Solidity · Foundry · Envio H
 
 ## Team
 
-- **Favio** (Cochabamba, Bolivia), musician and builder
+- **Favio** 
 - **Ingrid**
